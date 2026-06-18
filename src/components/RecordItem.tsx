@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Clock, Trash2, Edit2, MapPin, Dog, StickyNote, X, Check } from 'lucide-react';
+import { Clock, Trash2, Edit2, MapPin, Dog, StickyNote, X, Check, MoreVertical } from 'lucide-react';
 import { BarkRecord } from '@/types';
 import { formatFriendlyDateTime } from '@/utils/date';
 
@@ -17,6 +17,12 @@ export function RecordItem({ record, onDelete, onUpdate }: RecordItemProps) {
   const [editDogDesc, setEditDogDesc] = useState(record.dogDescription || '');
   const [editNote, setEditNote] = useState(record.note || '');
 
+  useEffect(() => {
+    setEditLocation(record.location || '');
+    setEditDogDesc(record.dogDescription || '');
+    setEditNote(record.note || '');
+  }, [record.location, record.dogDescription, record.note]);
+
   const handleSave = () => {
     onUpdate(record.id, {
       location: editLocation.trim() || undefined,
@@ -24,6 +30,7 @@ export function RecordItem({ record, onDelete, onUpdate }: RecordItemProps) {
       note: editNote.trim() || undefined,
     });
     setIsEditing(false);
+    setShowActions(false);
   };
 
   const handleCancel = () => {
@@ -31,6 +38,16 @@ export function RecordItem({ record, onDelete, onUpdate }: RecordItemProps) {
     setEditDogDesc(record.dogDescription || '');
     setEditNote(record.note || '');
     setIsEditing(false);
+  };
+
+  const handleDelete = () => {
+    setShowActions(false);
+    onDelete(record.id);
+  };
+
+  const toggleActions = () => {
+    if (isEditing) return;
+    setShowActions(prev => !prev);
   };
 
   return (
@@ -47,12 +64,12 @@ export function RecordItem({ record, onDelete, onUpdate }: RecordItemProps) {
         <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
           <Clock className="text-amber-600" size={18} />
         </div>
-        
-        <div className="flex-1 min-w-0">
+
+        <div className="flex-1 min-w-0" onClick={toggleActions}>
           <div className="font-medium text-gray-800">
             {formatFriendlyDateTime(record.timestamp)}
           </div>
-          
+
           <AnimatePresence mode="wait">
             {!isEditing ? (
               <motion.div
@@ -88,6 +105,7 @@ export function RecordItem({ record, onDelete, onUpdate }: RecordItemProps) {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 className="mt-3 space-y-2"
+                onClick={(e) => e.stopPropagation()}
               >
                 <input
                   type="text"
@@ -130,30 +148,42 @@ export function RecordItem({ record, onDelete, onUpdate }: RecordItemProps) {
           </AnimatePresence>
         </div>
 
-        <AnimatePresence>
-          {showActions && !isEditing && (
-            <motion.div
-              initial={{ opacity: 0, x: 10 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 10 }}
-              className="flex items-center gap-1"
-            >
-              <button
-                onClick={() => setIsEditing(true)}
-                className="p-2 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
-                title="编辑"
+        <div className="flex items-center gap-1 flex-shrink-0 sm:hidden">
+          <button
+            onClick={toggleActions}
+            className="p-2 text-gray-400 hover:text-amber-600 active:bg-amber-50 rounded-lg transition-colors"
+            title="更多操作"
+          >
+            <MoreVertical size={16} />
+          </button>
+        </div>
+
+        <div className="hidden sm:flex items-center gap-1">
+          <AnimatePresence>
+            {showActions && !isEditing && (
+              <motion.div
+                initial={{ opacity: 0, x: 10 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 10 }}
+                className="flex items-center gap-1"
               >
-                <Edit2 size={16} />
-              </button>
-              <button
-                onClick={() => onDelete(record.id)}
-                className="p-2 text-gray-400 hover:text-coral-600 hover:bg-coral-50 rounded-lg transition-colors"
-                title="删除"
-              >
-                <Trash2 size={16} />
-              </button>
-            </motion.div>
-          )}
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="p-2 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                  title="编辑"
+                >
+                  <Edit2 size={16} />
+                </button>
+                <button
+                  onClick={handleDelete}
+                  className="p-2 text-gray-400 hover:text-coral-600 hover:bg-coral-50 rounded-lg transition-colors"
+                  title="删除"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
           {isEditing && (
             <button
               onClick={handleCancel}
@@ -162,8 +192,44 @@ export function RecordItem({ record, onDelete, onUpdate }: RecordItemProps) {
               <X size={16} />
             </button>
           )}
+        </div>
+
+        <AnimatePresence>
+          {showActions && !isEditing && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="sm:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-amber-100 p-4 z-50 flex gap-3"
+            >
+              <button
+                onClick={() => {
+                  setIsEditing(true);
+                  setShowActions(false);
+                }}
+                className="flex-1 py-3 px-4 bg-amber-500 text-white rounded-xl font-medium flex items-center justify-center gap-2"
+              >
+                <Edit2 size={18} />
+                编辑
+              </button>
+              <button
+                onClick={handleDelete}
+                className="flex-1 py-3 px-4 bg-coral-500 text-white rounded-xl font-medium flex items-center justify-center gap-2"
+              >
+                <Trash2 size={18} />
+                删除
+              </button>
+            </motion.div>
+          )}
         </AnimatePresence>
       </div>
+
+      {showActions && !isEditing && (
+        <div
+          className="sm:hidden fixed inset-0 bg-black/20 z-40"
+          onClick={() => setShowActions(false)}
+        />
+      )}
     </motion.div>
   );
 }

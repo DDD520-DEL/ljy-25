@@ -7,7 +7,7 @@ import {
   getMaxHourlyCount,
   getMaxWeeklyCount,
 } from '@/utils/statistics';
-import { HOURS, WEEKDAY_SHORT, formatHour, getTimePeriod } from '@/types';
+import { WEEKDAY_SHORT, formatHour, getTimePeriod } from '@/types';
 
 export function useStats() {
   const records = useBarkStore((state) => state.records);
@@ -75,6 +75,5 @@ export function useStats() {
     chartData,
     heatmapData,
     hasData,
-    HOURS,
   };
 }

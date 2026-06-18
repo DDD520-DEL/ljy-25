@@ -10,7 +10,7 @@ import { HourlyChart } from '@/components/HourlyChart';
 import { WeeklyHeatmap } from '@/components/WeeklyHeatmap';
 import { StatsCard } from '@/components/StatsCard';
 import { useStats } from '@/hooks/useStats';
-import { WEEKDAYS, getTimePeriod } from '@/types';
+import { getTimePeriod } from '@/types';
 import { formatFriendlyDate } from '@/utils/date';
 
 export function AnalysisPage() {

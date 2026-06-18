@@ -22,10 +22,10 @@ const initialSettings: AppSettings = {
 
 export const useBarkStore = create<BarkState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       records: [],
       settings: initialSettings,
-      
+
       addRecord: (timestamp?: number, data?: Partial<BarkRecord>) => {
         const now = Date.now();
         const newRecord: BarkRecord = {
@@ -35,14 +35,14 @@ export const useBarkStore = create<BarkState>()(
           updatedAt: now,
           ...data,
         };
-        
+
         set((state) => ({
           records: [newRecord, ...state.records],
         }));
-        
+
         return newRecord;
       },
-      
+
       updateRecord: (id: string, data: Partial<BarkRecord>) => {
         set((state) => ({
           records: state.records.map((record) =>
@@ -52,23 +52,23 @@ export const useBarkStore = create<BarkState>()(
           ),
         }));
       },
-      
+
       deleteRecord: (id: string) => {
         set((state) => ({
           records: state.records.filter((record) => record.id !== id),
         }));
       },
-      
+
       clearAllRecords: () => {
         set({ records: [] });
       },
-      
+
       updateSettings: (settings: Partial<AppSettings>) => {
         set((state) => ({
           settings: { ...state.settings, ...settings },
         }));
       },
-      
+
       importRecords: (records: BarkRecord[]) => {
         set((state) => {
           const existingIds = new Set(state.records.map((r) => r.id));
@@ -91,12 +91,3 @@ export const useBarkStore = create<BarkState>()(
     }
   )
 );
-
-export const selectRecords = (state: BarkState) => state.records;
-export const selectSettings = (state: BarkState) => state.settings;
-export const selectAddRecord = (state: BarkState) => state.addRecord;
-export const selectUpdateRecord = (state: BarkState) => state.updateRecord;
-export const selectDeleteRecord = (state: BarkState) => state.deleteRecord;
-export const selectClearAllRecords = (state: BarkState) => state.clearAllRecords;
-export const selectUpdateSettings = (state: BarkState) => state.updateSettings;
-export const selectImportRecords = (state: BarkState) => state.importRecords;

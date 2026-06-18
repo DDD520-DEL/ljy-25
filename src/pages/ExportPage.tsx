@@ -1,19 +1,17 @@
-import { useState, useRef, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
-  Share2,
   Copy,
   Download,
   Check,
   FileText,
-  Image,
+  Code2,
   AlertCircle,
 } from 'lucide-react';
 import { useBarkRecords } from '@/hooks/useBarkRecords';
 import { useStats } from '@/hooks/useStats';
-import { exportRecordsAsText } from '@/utils/storage';
-import { WEEKDAYS, getTimePeriod } from '@/types';
-import { formatFriendlyDate } from '@/utils/date';
+import { exportRecordsAsText, exportRecordsAsJSON } from '@/utils/storage';
+import { WEEKDAYS } from '@/types';
 
 export function ExportPage() {
   const { records } = useBarkRecords();
@@ -21,15 +19,20 @@ export function ExportPage() {
     useStats();
   const [copied, setCopied] = useState(false);
   const [exportFormat, setExportFormat] = useState<'text' | 'json'>('text');
-  const reportRef = useRef<HTMLDivElement>(null);
 
   const textReport = useMemo(() => {
     return exportRecordsAsText(records);
   }, [records]);
 
-  const handleCopyText = async () => {
+  const jsonReport = useMemo(() => {
+    return exportRecordsAsJSON(records);
+  }, [records]);
+
+  const currentContent = exportFormat === 'text' ? textReport : jsonReport;
+
+  const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(textReport);
+      await navigator.clipboard.writeText(currentContent);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (error) {
@@ -37,25 +40,15 @@ export function ExportPage() {
     }
   };
 
-  const handleDownloadText = () => {
-    const blob = new Blob([textReport], { type: 'text/plain;charset=utf-8' });
+  const handleDownload = () => {
+    const isText = exportFormat === 'text';
+    const blob = new Blob([currentContent], {
+      type: isText ? 'text/plain;charset=utf-8' : 'application/json;charset=utf-8',
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `狗叫记录_${new Date().toLocaleDateString('zh-CN')}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  const handleDownloadJSON = () => {
-    const json = JSON.stringify(records, null, 2);
-    const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `狗叫记录_${new Date().toLocaleDateString('zh-CN')}.json`;
+    a.download = `狗叫记录_${new Date().toLocaleDateString('zh-CN')}.${isText ? 'txt' : 'json'}`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -117,7 +110,6 @@ export function ExportPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          ref={reportRef}
           className="bg-white rounded-2xl p-6 shadow-soft mb-6"
         >
           <div className="text-center mb-6">
@@ -237,14 +229,14 @@ export function ExportPage() {
                   : 'bg-white text-gray-600 hover:bg-gray-50'
               }`}
             >
-              <Image size={18} />
+              <Code2 size={18} />
               JSON 格式
             </button>
           </div>
 
           <div className="flex gap-3">
             <button
-              onClick={handleCopyText}
+              onClick={handleCopy}
               className="flex-1 py-4 px-6 bg-mint-500 text-white rounded-xl font-medium hover:bg-mint-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-mint-200"
             >
               {copied ? (
@@ -260,7 +252,7 @@ export function ExportPage() {
               )}
             </button>
             <button
-              onClick={exportFormat === 'text' ? handleDownloadText : handleDownloadJSON}
+              onClick={handleDownload}
               className="flex-1 py-4 px-6 bg-amber-500 text-white rounded-xl font-medium hover:bg-amber-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-200"
             >
               <Download size={20} />

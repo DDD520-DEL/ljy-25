@@ -43,11 +43,6 @@ export interface AppSettings {
 
 export type DogMood = 'happy' | 'neutral' | 'confused' | 'sad' | 'tired';
 
-export const STORAGE_KEYS = {
-  RECORDS: 'bark_records',
-  SETTINGS: 'app_settings',
-} as const;
-
 export const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'] as const;
 export const WEEKDAY_SHORT = ['日', '一', '二', '三', '四', '五', '六'] as const;
 

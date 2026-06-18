@@ -107,10 +107,6 @@ export function getTodayRecords(records: BarkRecord[]): BarkRecord[] {
   return records.filter(r => formatDate(r.timestamp) === today);
 }
 
-export function getRecordsByDate(records: BarkRecord[], date: string): BarkRecord[] {
-  return records.filter(r => formatDate(r.timestamp) === date);
-}
-
 export function getMaxHourlyCount(hourlyStats: HourlyStats[]): number {
   if (hourlyStats.length === 0) return 0;
   return Math.max(...hourlyStats.map(s => s.count));
