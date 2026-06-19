@@ -440,7 +440,6 @@ export function RecordsPage() {
                 <div className="flex flex-wrap gap-2 mb-3">
                   {allTags.map((tag) => {
                     const isSelected = selectedTags.includes(tag);
-                    const colorClasses = getTagColorClasses(tag);
                     return (
                       <button
                         key={tag}
@@ -453,8 +452,8 @@ export function RecordsPage() {
                         }}
                         className={`px-3 py-1.5 text-sm rounded-full border transition-all ${
                           isSelected
-                            ? colorClasses.replace('100', '500').replace('800', 'white').replace('200', '500')
-                            : `${colorClasses} opacity-60 hover:opacity-100`
+                            ? getTagColorClasses(tag, 'solid')
+                            : `${getTagColorClasses(tag, 'light')} hover:opacity-100 opacity-70`
                         }`}
                       >
                         {tag}
