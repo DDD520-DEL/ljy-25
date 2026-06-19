@@ -8,9 +8,18 @@ export interface BarkRecord {
   audioData?: string;
   audioMimeType?: string;
   audioDuration?: number;
+  tags?: string[];
   createdAt: number;
   updatedAt: number;
 }
+
+export interface TagStats {
+  tag: string;
+  count: number;
+  percentage: number;
+}
+
+export const PRESET_TAGS = ['快递', '装修', '遛狗路过', '夜间吠叫', '陌生人', '其他狗'] as const;
 
 export interface HourlyStats {
   hour: number;

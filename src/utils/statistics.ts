@@ -4,6 +4,7 @@ import {
   WeeklyStats,
   SummaryStats,
   DailyCount,
+  TagStats,
   HOURS,
 } from '@/types';
 import { formatDate, getHour, getDayOfWeek, getDaysBetween } from './date';
@@ -135,4 +136,51 @@ export function groupRecordsByDate(records: BarkRecord[]): Map<string, BarkRecor
   });
   
   return sortedGroups;
+}
+
+export function calculateTagStats(records: BarkRecord[]): TagStats[] {
+  const tagCounts = new Map<string, number>();
+  let totalTagged = 0;
+
+  records.forEach(record => {
+    if (record.tags && record.tags.length > 0) {
+      record.tags.forEach(tag => {
+        tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1);
+        totalTagged++;
+      });
+    }
+  });
+
+  const stats: TagStats[] = Array.from(tagCounts.entries()).map(([tag, count]) => ({
+    tag,
+    count,
+    percentage: totalTagged > 0 ? (count / totalTagged) * 100 : 0,
+  }));
+
+  return stats.sort((a, b) => b.count - a.count);
+}
+
+export function filterRecordsByTags(
+  records: BarkRecord[],
+  selectedTags: string[],
+  matchAll: boolean = false
+): BarkRecord[] {
+  if (selectedTags.length === 0) return records;
+
+  return records.filter(record => {
+    const recordTags = record.tags || [];
+    if (matchAll) {
+      return selectedTags.every(tag => recordTags.includes(tag));
+    } else {
+      return selectedTags.some(tag => recordTags.includes(tag));
+    }
+  });
+}
+
+export function getAllTags(records: BarkRecord[]): string[] {
+  const tagSet = new Set<string>();
+  records.forEach(record => {
+    record.tags?.forEach(tag => tagSet.add(tag));
+  });
+  return Array.from(tagSet).sort();
 }

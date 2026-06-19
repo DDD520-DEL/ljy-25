@@ -4,6 +4,8 @@ import {
   calculateHourlyStats,
   calculateWeeklyStats,
   calculateSummaryStats,
+  calculateTagStats,
+  getAllTags,
   getMaxHourlyCount,
   getMaxWeeklyCount,
 } from '@/utils/statistics';
@@ -61,6 +63,10 @@ export function useStats() {
     }));
   }, [weeklyStats, maxWeeklyCount]);
 
+  const tagStats = useMemo(() => calculateTagStats(records), [records]);
+  
+  const allTags = useMemo(() => getAllTags(records), [records]);
+
   const hasData = useMemo(() => records.length > 0, [records]);
 
   return {
@@ -74,6 +80,8 @@ export function useStats() {
     peakDayInfo,
     chartData,
     heatmapData,
+    tagStats,
+    allTags,
     hasData,
   };
 }

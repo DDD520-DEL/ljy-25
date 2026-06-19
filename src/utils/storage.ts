@@ -21,6 +21,24 @@ export function exportRecordsAsText(records: BarkRecord[]): string {
   if (recordsWithAudio > 0) {
     lines.push(`含录音记录：${recordsWithAudio} 条`);
   }
+  
+  const tagCounts = new Map<string, number>();
+  records.forEach(record => {
+    record.tags?.forEach(tag => {
+      tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1);
+    });
+  });
+  
+  if (tagCounts.size > 0) {
+    lines.push('');
+    lines.push('标签统计：');
+    lines.push('-'.repeat(40));
+    const sortedTags = Array.from(tagCounts.entries()).sort((a, b) => b[1] - a[1]);
+    sortedTags.forEach(([tag, count]) => {
+      lines.push(`  ${tag}: ${count} 次`);
+    });
+  }
+  
   lines.push(`记录时间：${new Date().toLocaleString('zh-CN')}`);
   lines.push('');
   lines.push('详细记录：');
@@ -34,9 +52,47 @@ export function exportRecordsAsText(records: BarkRecord[]): string {
     if (record.location) line += ` | 位置：${record.location}`;
     if (record.dogDescription) line += ` | 特征：${record.dogDescription}`;
     if (record.note) line += ` | 备注：${record.note}`;
+    if (record.tags && record.tags.length > 0) line += ` | 标签：${record.tags.join(', ')}`;
     if (record.audioData) line += ` | 🎵 录音${record.audioDuration ? `(${record.audioDuration}s)` : ''}`;
     lines.push(line);
   });
+  
+  lines.push('');
+  lines.push('='.repeat(40));
+  lines.push('按标签分组：');
+  lines.push('-'.repeat(40));
+  
+  const untaggedRecords = sorted.filter(r => !r.tags || r.tags.length === 0);
+  const taggedRecords = sorted.filter(r => r.tags && r.tags.length > 0);
+  
+  const allTags = Array.from(tagCounts.keys()).sort();
+  
+  allTags.forEach(tag => {
+    const tagRecords = taggedRecords.filter(r => r.tags?.includes(tag));
+    lines.push('');
+    lines.push(`【${tag}】(${tagRecords.length} 次)`);
+    tagRecords.forEach((record) => {
+      const date = new Date(record.timestamp);
+      const timeStr = date.toLocaleString('zh-CN');
+      let line = `  - ${timeStr}`;
+      if (record.location) line += ` | ${record.location}`;
+      if (record.note) line += ` | ${record.note}`;
+      lines.push(line);
+    });
+  });
+  
+  if (untaggedRecords.length > 0) {
+    lines.push('');
+    lines.push(`【未打标】(${untaggedRecords.length} 次)`);
+    untaggedRecords.forEach((record) => {
+      const date = new Date(record.timestamp);
+      const timeStr = date.toLocaleString('zh-CN');
+      let line = `  - ${timeStr}`;
+      if (record.location) line += ` | ${record.location}`;
+      if (record.note) line += ` | ${record.note}`;
+      lines.push(line);
+    });
+  }
   
   return lines.join('\n');
 }

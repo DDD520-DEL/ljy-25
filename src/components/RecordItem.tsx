@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Clock, Trash2, Edit2, MapPin, Dog, StickyNote, X, Check, MoreVertical, Volume2, VolumeX } from 'lucide-react';
+import { Clock, Trash2, Edit2, MapPin, Dog, StickyNote, X, Check, MoreVertical, Volume2, VolumeX, Tag } from 'lucide-react';
 import { BarkRecord } from '@/types';
 import { formatFriendlyDateTime } from '@/utils/date';
 import { AudioPlayer } from '@/components/AudioPlayer';
+import { TagSelector } from '@/components/TagSelector';
 
 interface RecordItemProps {
   record: BarkRecord;
@@ -18,20 +19,23 @@ export function RecordItem({ record, onDelete, onUpdate }: RecordItemProps) {
   const [editLocation, setEditLocation] = useState(record.location || '');
   const [editDogDesc, setEditDogDesc] = useState(record.dogDescription || '');
   const [editNote, setEditNote] = useState(record.note || '');
+  const [editTags, setEditTags] = useState<string[]>(record.tags || []);
   const [editAudioRemoved, setEditAudioRemoved] = useState(false);
 
   useEffect(() => {
     setEditLocation(record.location || '');
     setEditDogDesc(record.dogDescription || '');
     setEditNote(record.note || '');
+    setEditTags(record.tags || []);
     setEditAudioRemoved(false);
-  }, [record.location, record.dogDescription, record.note, record.id]);
+  }, [record.location, record.dogDescription, record.note, record.tags, record.id]);
 
   const handleSave = () => {
     const updates: Partial<BarkRecord> = {
       location: editLocation.trim() || undefined,
       dogDescription: editDogDesc.trim() || undefined,
       note: editNote.trim() || undefined,
+      tags: editTags.length > 0 ? editTags : undefined,
     };
     if (editAudioRemoved) {
       updates.audioData = undefined;
@@ -48,6 +52,7 @@ export function RecordItem({ record, onDelete, onUpdate }: RecordItemProps) {
     setEditLocation(record.location || '');
     setEditDogDesc(record.dogDescription || '');
     setEditNote(record.note || '');
+    setEditTags(record.tags || []);
     setEditAudioRemoved(false);
     setIsEditing(false);
   };
@@ -130,6 +135,21 @@ export function RecordItem({ record, onDelete, onUpdate }: RecordItemProps) {
                     <span>{record.note}</span>
                   </div>
                 )}
+                {record.tags && record.tags.length > 0 && (
+                  <div className="flex items-start gap-2">
+                    <Tag size={14} className="mt-0.5 flex-shrink-0 text-gray-400" />
+                    <div className="flex flex-wrap gap-1">
+                      {record.tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="px-2 py-0.5 text-xs bg-amber-50 text-amber-700 rounded-full border border-amber-100"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {hasAudio && !showAudioPlayer && (
                   <div className="flex items-center gap-2 text-sm text-amber-600">
                     <Volume2 size={14} />
@@ -167,6 +187,18 @@ export function RecordItem({ record, onDelete, onUpdate }: RecordItemProps) {
                   rows={2}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none"
                 />
+                <div className="pt-2 border-t border-gray-100">
+                  <div className="text-xs text-gray-500 mb-2 flex items-center gap-1">
+                    <Tag size={12} />
+                    标签
+                  </div>
+                  <TagSelector
+                    selectedTags={editTags}
+                    onChange={setEditTags}
+                    placeholder="输入自定义标签..."
+                    compact
+                  />
+                </div>
                 {hasAudio && (
                   <div className="flex items-center justify-between p-3 bg-amber-50 rounded-lg">
                     <div className="flex items-center gap-2 text-sm text-amber-700">

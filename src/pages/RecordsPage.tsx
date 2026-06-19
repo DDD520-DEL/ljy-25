@@ -1,47 +1,56 @@
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  List,
   Search,
   Calendar,
   Trash2,
   ChevronDown,
   ChevronUp,
   AlertTriangle,
+  Tag,
+  Filter,
 } from 'lucide-react';
 import { RecordItem } from '@/components/RecordItem';
 import { useBarkRecords } from '@/hooks/useBarkRecords';
+import { getAllTags, filterRecordsByTags, groupRecordsByDate } from '@/utils/statistics';
 import { formatFriendlyDate } from '@/utils/date';
 
 export function RecordsPage() {
-  const { records, groupedRecords, deleteRecord, updateRecord, clearAllRecords } =
+  const { records, deleteRecord, updateRecord, clearAllRecords } =
     useBarkRecords();
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [tagMatchAll, setTagMatchAll] = useState(false);
+  const [showTagFilter, setShowTagFilter] = useState(false);
 
-  const filteredGroups = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return groupedRecords;
+  const allTags = useMemo(() => getAllTags(records), [records]);
+  
+  const filteredRecords = useMemo(() => {
+    let result = records;
+
+    if (selectedTags.length > 0) {
+      result = filterRecordsByTags(result, selectedTags, tagMatchAll);
     }
 
-    const query = searchQuery.toLowerCase();
-    const filtered = new Map<string, typeof records>();
-
-    groupedRecords.forEach((records, date) => {
-      const matches = records.filter(
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(
         (r) =>
           r.location?.toLowerCase().includes(query) ||
           r.dogDescription?.toLowerCase().includes(query) ||
-          r.note?.toLowerCase().includes(query)
+          r.note?.toLowerCase().includes(query) ||
+          r.tags?.some((tag) => tag.toLowerCase().includes(query))
       );
-      if (matches.length > 0) {
-        filtered.set(date, matches);
-      }
-    });
+    }
 
-    return filtered;
-  }, [groupedRecords, searchQuery]);
+    return result;
+  }, [records, selectedTags, tagMatchAll, searchQuery]);
+
+  const filteredGroups = useMemo(() => {
+    return groupRecordsByDate(filteredRecords);
+  }, [filteredRecords]);
 
   const toggleDate = (date: string) => {
     setExpandedDates((prev) => {
@@ -125,7 +134,7 @@ export function RecordsPage() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="relative mb-6"
+          className="relative mb-4"
         >
           <Search
             className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
@@ -133,12 +142,125 @@ export function RecordsPage() {
           />
           <input
             type="text"
-            placeholder="搜索备注、位置..."
+            placeholder="搜索备注、位置、标签..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-3 bg-white border border-amber-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400 shadow-sm"
+            className="w-full pl-10 pr-12 py-3 bg-white border border-amber-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400 shadow-sm"
           />
+          {allTags.length > 0 && (
+            <button
+              onClick={() => setShowTagFilter(prev => !prev)}
+              className={`absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-colors ${
+                selectedTags.length > 0 ? 'bg-amber-100 text-amber-700' : 'text-gray-400 hover:text-amber-600 hover:bg-amber-50'
+              }`}
+              title="标签筛选"
+            >
+              <Filter size={18} />
+            </button>
+          )}
         </motion.div>
+
+        <AnimatePresence>
+          {showTagFilter && allTags.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+              animate={{ opacity: 1, height: 'auto', marginBottom: 24 }}
+              exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+              transition={{ duration: 0.2 }}
+              className="overflow-hidden"
+            >
+              <div className="bg-white rounded-xl p-4 border border-amber-100 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                    <Tag size={16} className="text-amber-600" />
+                    按标签筛选
+                  </div>
+                  {selectedTags.length > 0 && (
+                    <button
+                      onClick={() => setSelectedTags([])}
+                      className="text-xs text-gray-400 hover:text-coral-600 transition-colors"
+                    >
+                      清除筛选
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {allTags.map((tag) => (
+                    <button
+                      key={tag}
+                      onClick={() => {
+                        setSelectedTags((prev) =>
+                          prev.includes(tag)
+                            ? prev.filter((t) => t !== tag)
+                            : [...prev, tag]
+                        );
+                      }}
+                      className={`px-3 py-1.5 text-sm rounded-full border transition-all ${
+                        selectedTags.includes(tag)
+                          ? 'bg-amber-500 text-white border-amber-500'
+                          : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-amber-300 hover:text-amber-700'
+                      }`}
+                    >
+                      {tag}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex items-center gap-4 text-sm">
+                  <span className="text-gray-500">匹配模式：</span>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      checked={!tagMatchAll}
+                      onChange={() => setTagMatchAll(false)}
+                      className="w-4 h-4 text-amber-500"
+                    />
+                    <span className="text-gray-700">任意标签</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      checked={tagMatchAll}
+                      onChange={() => setTagMatchAll(true)}
+                      className="w-4 h-4 text-amber-500"
+                    />
+                    <span className="text-gray-700">全部标签</span>
+                  </label>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {selectedTags.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-4 flex items-center gap-2 flex-wrap"
+          >
+            <span className="text-sm text-gray-500">已选标签：</span>
+            {selectedTags.map((tag) => (
+              <span
+                key={tag}
+                className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-amber-100 text-amber-700 rounded-full"
+              >
+                {tag}
+                <button
+                  onClick={() =>
+                    setSelectedTags((prev) => prev.filter((t) => t !== tag))
+                  }
+                  className="ml-1 hover:opacity-70"
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+            <span className="text-sm text-gray-400 ml-2">
+              ({filteredRecords.length} 条匹配)
+            </span>
+          </motion.div>
+        )}
 
         {filteredGroups.size === 0 ? (
           <motion.div

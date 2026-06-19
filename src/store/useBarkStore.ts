@@ -12,6 +12,9 @@ interface BarkState {
   clearAllRecords: () => void;
   updateSettings: (settings: Partial<AppSettings>) => void;
   importRecords: (records: BarkRecord[]) => void;
+  addTagToRecord: (id: string, tag: string) => void;
+  removeTagFromRecord: (id: string, tag: string) => void;
+  getAllTags: () => string[];
 }
 
 const initialSettings: AppSettings = {
@@ -79,6 +82,44 @@ export const useBarkStore = create<BarkState>()(
             ),
           };
         });
+      },
+
+      addTagToRecord: (id: string, tag: string) => {
+        set((state) => ({
+          records: state.records.map((record) =>
+            record.id === id
+              ? {
+                  ...record,
+                  tags: Array.from(new Set([...(record.tags || []), tag])),
+                  updatedAt: Date.now(),
+                }
+              : record
+          ),
+        }));
+      },
+
+      removeTagFromRecord: (id: string, tag: string) => {
+        set((state) => ({
+          records: state.records.map((record) =>
+            record.id === id
+              ? {
+                  ...record,
+                  tags: (record.tags || []).filter((t) => t !== tag),
+                  updatedAt: Date.now(),
+                }
+              : record
+          ),
+        }));
+      },
+
+      getAllTags: () => {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const state = useBarkStore.getState();
+        const tagSet = new Set<string>();
+        state.records.forEach((record) => {
+          record.tags?.forEach((tag) => tagSet.add(tag));
+        });
+        return Array.from(tagSet).sort();
       },
     }),
     {

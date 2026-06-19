@@ -9,6 +9,7 @@ import {
 import { HourlyChart } from '@/components/HourlyChart';
 import { WeeklyHeatmap } from '@/components/WeeklyHeatmap';
 import { StatsCard } from '@/components/StatsCard';
+import { TagPieChart } from '@/components/TagPieChart';
 import { useStats } from '@/hooks/useStats';
 import { getTimePeriod } from '@/types';
 import { formatFriendlyDate } from '@/utils/date';
@@ -23,6 +24,7 @@ export function AnalysisPage() {
     summaryStats,
     peakHourInfo,
     peakDayInfo,
+    tagStats,
   } = useStats();
 
   if (!hasData) {
@@ -149,9 +151,24 @@ export function AnalysisPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.9 }}
+          className="mb-6"
         >
           <WeeklyHeatmap data={heatmapData} maxCount={maxWeeklyCount} />
         </motion.div>
+
+        {tagStats.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 1.0 }}
+            className="mb-6"
+          >
+            <TagPieChart
+              data={tagStats}
+              totalRecords={summaryStats.totalRecords}
+            />
+          </motion.div>
+        )}
 
         {summaryStats.recordsByDay.length > 0 && (
           <motion.div
