@@ -23,6 +23,7 @@ interface BarkState {
   removeReminderTime: (id: string) => void;
   toggleReminders: (enabled: boolean) => void;
   markReminderTriggered: (reminderId: string, dateStr: string) => void;
+  markDailyPopupShown: (dateStr: string) => void;
   addDog: (data: Omit<DogProfile, 'id' | 'createdAt' | 'updatedAt'>) => DogProfile;
   updateDog: (id: string, data: Partial<Omit<DogProfile, 'id' | 'createdAt' | 'updatedAt'>>) => void;
   deleteDog: (id: string) => void;
@@ -62,6 +63,7 @@ const initialSettings: AppSettings = {
       { id: generateId(), hour: 20, minute: 0, enabled: true },
     ],
     lastTriggeredDates: {},
+    lastDailyPopupDate: '',
   },
   locationSharing: {
     enabled: false,
@@ -246,6 +248,18 @@ export const useBarkStore = create<BarkState>()(
                 ...state.settings.reminders.lastTriggeredDates,
                 [reminderId]: dateStr,
               },
+            },
+          },
+        }));
+      },
+
+      markDailyPopupShown: (dateStr: string) => {
+        set((state) => ({
+          settings: {
+            ...state.settings,
+            reminders: {
+              ...state.settings.reminders,
+              lastDailyPopupDate: dateStr,
             },
           },
         }));
@@ -470,6 +484,9 @@ export const useBarkStore = create<BarkState>()(
         }
         if (state && state.settings.reminders && !state.settings.reminders.times) {
           state.settings.reminders.times = initialSettings.reminders.times;
+        }
+        if (state && state.settings.reminders && state.settings.reminders.lastDailyPopupDate === undefined) {
+          state.settings.reminders.lastDailyPopupDate = '';
         }
         if (state && !state.settings.locationSharing) {
           state.settings.locationSharing = initialSettings.locationSharing;

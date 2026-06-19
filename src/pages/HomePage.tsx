@@ -6,6 +6,7 @@ import { StatsCard } from '@/components/StatsCard';
 import { DogMood } from '@/components/DogMood';
 import { DogProfileManager } from '@/components/DogProfileManager';
 import { RecordItem } from '@/components/RecordItem';
+import { DailyReminderPopup } from '@/components/DailyReminderPopup';
 import { useBarkRecords } from '@/hooks/useBarkRecords';
 import { useStats } from '@/hooks/useStats';
 import { useReminders } from '@/hooks/useReminders';
@@ -30,6 +31,8 @@ export function HomePage() {
   const { peakHourInfo, summaryStats } = useStats();
   const { reminders, getTodayReminderStatus, formatReminderTime } = useReminders();
   const dogs = useBarkStore((s) => s.dogs);
+  const markDailyPopupShown = useBarkStore((s) => s.markDailyPopupShown);
+  const lastDailyPopupDate = useBarkStore((s) => s.settings.reminders.lastDailyPopupDate);
 
   const {
     isSharingEnabled,
@@ -40,6 +43,7 @@ export function HomePage() {
 
   const [selectedDogId, setSelectedDogId] = useState<string | undefined>(undefined);
   const [showDogManager, setShowDogManager] = useState(false);
+  const [showDailyPopup, setShowDailyPopup] = useState(false);
   const [locationShareStatus, setLocationShareStatus] = useState<{
     show: boolean;
     success: boolean;
@@ -57,6 +61,22 @@ export function HomePage() {
       heatmapService.stopAggregationScheduler();
     };
   }, []);
+
+  useEffect(() => {
+    const todayStr = new Date().toDateString();
+    if (lastDailyPopupDate !== todayStr) {
+      const timer = setTimeout(() => {
+        setShowDailyPopup(true);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [lastDailyPopupDate]);
+
+  const handleCloseDailyPopup = () => {
+    const todayStr = new Date().toDateString();
+    setShowDailyPopup(false);
+    markDailyPopupShown(todayStr);
+  };
 
   const handleQuickRecord = async (
     audioData?: { data: string; mimeType: string; duration: number },
@@ -408,6 +428,15 @@ export function HomePage() {
           </motion.div>
         )}
       </div>
+
+      <DailyReminderPopup
+        isOpen={showDailyPopup}
+        onClose={handleCloseDailyPopup}
+        reminders={reminders.times}
+        todayCount={todayCount}
+        formatReminderTime={formatReminderTime}
+        getTodayReminderStatus={getTodayReminderStatus}
+      />
     </div>
   );
 }

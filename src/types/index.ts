@@ -245,6 +245,7 @@ export interface ReminderSettings {
   enabled: boolean;
   times: ReminderTime[];
   lastTriggeredDates: Record<string, string>;
+  lastDailyPopupDate: string;
 }
 
 export interface AppSettings {

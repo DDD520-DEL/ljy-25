@@ -71,6 +71,7 @@ function initUserData(userId: string): void {
           enabled: false,
           times: [],
           lastTriggeredDates: {},
+          lastDailyPopupDate: '',
         },
         locationSharing: {
           enabled: false,
