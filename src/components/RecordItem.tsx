@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Clock, Trash2, Edit2, MapPin, Dog, StickyNote, X, Check, MoreVertical, Volume2, VolumeX, Tag } from 'lucide-react';
+import { Clock, Trash2, Edit2, MapPin, Dog, StickyNote, X, Check, MoreVertical, Volume2, VolumeX, Tag, ChevronRight } from 'lucide-react';
 import { BarkRecord } from '@/types';
 import { formatFriendlyDateTime } from '@/utils/date';
 import { AudioPlayer } from '@/components/AudioPlayer';
@@ -18,6 +19,7 @@ interface RecordItemProps {
 }
 
 export function RecordItem({ record, onDelete, onUpdate, selectable, selected, onSelect }: RecordItemProps) {
+  const navigate = useNavigate();
   const dogs = useBarkStore((s) => s.dogs);
   const dogName = record.dogId ? dogs.find((d) => d.id === record.dogId)?.name : undefined;
 
@@ -77,6 +79,15 @@ export function RecordItem({ record, onDelete, onUpdate, selectable, selected, o
     onDelete(record.id);
   };
 
+  const handleClick = () => {
+    if (isEditing) return;
+    if (selectable) {
+      setShowActions(prev => !prev);
+    } else {
+      navigate(`/records/${record.id}`);
+    }
+  };
+
   const toggleActions = () => {
     if (isEditing) return;
     setShowActions(prev => !prev);
@@ -114,7 +125,7 @@ export function RecordItem({ record, onDelete, onUpdate, selectable, selected, o
           <Clock className="text-amber-600" size={18} />
         </div>
 
-        <div className="flex-1 min-w-0" onClick={toggleActions}>
+        <div className="flex-1 min-w-0" onClick={handleClick}>
           <div className="flex items-center gap-2">
             <div className="font-medium text-gray-800">
               {formatFriendlyDateTime(record.timestamp)}
@@ -305,13 +316,18 @@ export function RecordItem({ record, onDelete, onUpdate, selectable, selected, o
         </div>
 
         <div className="flex items-center gap-1 flex-shrink-0 sm:hidden">
-          <button
-            onClick={toggleActions}
-            className="p-2 text-gray-400 hover:text-amber-600 active:bg-amber-50 rounded-lg transition-colors"
-            title="更多操作"
-          >
-            <MoreVertical size={16} />
-          </button>
+          {!selectable && !isEditing && (
+            <ChevronRight size={18} className="text-gray-300" />
+          )}
+          {selectable && (
+            <button
+              onClick={toggleActions}
+              className="p-2 text-gray-400 hover:text-amber-600 active:bg-amber-50 rounded-lg transition-colors"
+              title="更多操作"
+            >
+              <MoreVertical size={16} />
+            </button>
+          )}
         </div>
 
         <div className="hidden sm:flex items-center gap-1">
@@ -340,6 +356,9 @@ export function RecordItem({ record, onDelete, onUpdate, selectable, selected, o
               </motion.div>
             )}
           </AnimatePresence>
+          {!selectable && !isEditing && !showActions && (
+            <ChevronRight size={18} className="text-gray-300" />
+          )}
           {isEditing && (
             <button
               onClick={handleCancel}

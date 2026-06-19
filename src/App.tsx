@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { HomePage } from '@/pages/HomePage';
 import { AnalysisPage } from '@/pages/AnalysisPage';
 import { RecordsPage } from '@/pages/RecordsPage';
+import { RecordDetailPage } from '@/pages/RecordDetailPage';
 import { ExportPage } from '@/pages/ExportPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { AdminLoginPage } from '@/pages/AdminLoginPage';
@@ -110,6 +111,19 @@ function AnimatedRoutes() {
           }
         />
         <Route
+          path="/records/:id"
+          element={
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.3 }}
+            >
+              <RecordDetailPage />
+            </motion.div>
+          }
+        />
+        <Route
           path="/export"
           element={
             <motion.div
@@ -143,6 +157,7 @@ function AnimatedRoutes() {
 function AppContent() {
   const location = useLocation();
   const isAdminRoute = location.pathname.startsWith('/admin');
+  const isRecordDetailPage = /^\/records\/[^/]+$/.test(location.pathname);
 
   if (isAdminRoute) {
     return <AnimatedRoutes />;
@@ -151,7 +166,7 @@ function AppContent() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-cream-50 to-cream-100">
       <AnimatedRoutes />
-      <Navigation />
+      {!isRecordDetailPage && <Navigation />}
     </div>
   );
 }
