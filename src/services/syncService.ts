@@ -508,46 +508,83 @@ function calculateDailyTrend(
 }
 
 function latLngToRegion(lat: number, lng: number): { province: string; city: string } | null {
-  const REGION_BOUNDS: { province: string; city: string; minLat: number; maxLat: number; minLng: number; maxLng: number }[] = [
-    { province: '黑龙江', city: '哈尔滨', minLat: 44.0, maxLat: 54.0, minLng: 121.0, maxLng: 136.0 },
-    { province: '吉林', city: '长春', minLat: 40.5, maxLat: 44.0, minLng: 122.0, maxLng: 131.0 },
-    { province: '辽宁', city: '沈阳', minLat: 38.5, maxLat: 43.5, minLng: 118.5, maxLng: 126.0 },
-    { province: '北京', city: '北京', minLat: 39.0, maxLat: 41.5, minLng: 115.5, maxLng: 117.5 },
-    { province: '天津', city: '天津', minLat: 38.5, maxLat: 40.5, minLng: 116.5, maxLng: 118.0 },
-    { province: '河北', city: '石家庄', minLat: 36.0, maxLat: 42.5, minLng: 113.5, maxLng: 120.0 },
-    { province: '山东', city: '济南', minLat: 34.0, maxLat: 38.5, minLng: 114.5, maxLng: 123.0 },
-    { province: '河南', city: '郑州', minLat: 31.0, maxLat: 36.5, minLng: 110.0, maxLng: 116.5 },
-    { province: '山西', city: '太原', minLat: 34.5, maxLat: 40.5, minLng: 110.0, maxLng: 114.5 },
-    { province: '陕西', city: '西安', minLat: 31.5, maxLat: 39.5, minLng: 105.5, maxLng: 111.5 },
-    { province: '甘肃', city: '兰州', minLat: 32.5, maxLat: 43.0, minLng: 92.5, maxLng: 108.5 },
-    { province: '四川', city: '成都', minLat: 26.0, maxLat: 34.0, minLng: 97.0, maxLng: 108.5 },
-    { province: '重庆', city: '重庆', minLat: 28.0, maxLat: 32.5, minLng: 105.0, maxLng: 110.5 },
-    { province: '湖北', city: '武汉', minLat: 29.0, maxLat: 33.5, minLng: 108.5, maxLng: 116.5 },
-    { province: '湖南', city: '长沙', minLat: 24.5, maxLat: 30.5, minLng: 108.5, maxLng: 114.5 },
-    { province: '江西', city: '南昌', minLat: 24.5, maxLat: 30.5, minLng: 113.5, maxLng: 118.5 },
-    { province: '安徽', city: '合肥', minLat: 29.0, maxLat: 34.5, minLng: 114.5, maxLng: 119.5 },
-    { province: '浙江', city: '杭州', minLat: 27.0, maxLat: 31.5, minLng: 118.0, maxLng: 123.0 },
-    { province: '江苏', city: '南京', minLat: 30.5, maxLat: 35.0, minLng: 116.5, maxLng: 121.5 },
-    { province: '上海', city: '上海', minLat: 30.5, maxLat: 31.9, minLng: 120.5, maxLng: 122.5 },
-    { province: '福建', city: '福州', minLat: 23.5, maxLat: 28.5, minLng: 115.5, maxLng: 120.5 },
-    { province: '广东', city: '广州', minLat: 20.0, maxLat: 25.5, minLng: 109.5, maxLng: 117.5 },
-    { province: '广西', city: '南宁', minLat: 20.5, maxLat: 26.5, minLng: 104.5, maxLng: 112.5 },
-    { province: '云南', city: '昆明', minLat: 21.0, maxLat: 29.5, minLng: 97.0, maxLng: 106.5 },
-    { province: '贵州', city: '贵阳', minLat: 25.0, maxLat: 29.5, minLng: 103.5, maxLng: 109.5 },
-    { province: '海南', city: '海口', minLat: 18.0, maxLat: 20.5, minLng: 108.5, maxLng: 111.5 },
-    { province: '内蒙古', city: '呼和浩特', minLat: 37.0, maxLat: 53.5, minLng: 97.0, maxLng: 126.5 },
-    { province: '新疆', city: '乌鲁木齐', minLat: 34.0, maxLat: 49.5, minLng: 73.0, maxLng: 96.5 },
-    { province: '西藏', city: '拉萨', minLat: 26.0, maxLat: 37.0, minLng: 78.0, maxLng: 99.5 },
-    { province: '青海', city: '西宁', minLat: 31.5, maxLat: 39.5, minLng: 89.5, maxLng: 103.5 },
-    { province: '宁夏', city: '银川', minLat: 35.0, maxLat: 39.5, minLng: 104.0, maxLng: 107.5 },
+  const MUNICIPALITY_BOUNDS: { province: string; city: string; minLat: number; maxLat: number; minLng: number; maxLng: number }[] = [
+    { province: '北京', city: '北京', minLat: 39.44, maxLat: 41.06, minLng: 115.42, maxLng: 117.50 },
+    { province: '天津', city: '天津', minLat: 38.57, maxLat: 40.15, minLng: 116.73, maxLng: 118.05 },
+    { province: '上海', city: '上海', minLat: 30.68, maxLat: 31.87, minLng: 120.95, maxLng: 122.15 },
+    { province: '重庆', city: '重庆', minLat: 28.16, maxLat: 32.21, minLng: 105.29, maxLng: 110.20 },
   ];
 
-  for (const region of REGION_BOUNDS) {
+  const PROVINCE_BOUNDS: { province: string; city: string; minLat: number; maxLat: number; minLng: number; maxLng: number }[] = [
+    { province: '黑龙江', city: '哈尔滨', minLat: 43.40, maxLat: 53.56, minLng: 121.18, maxLng: 135.06 },
+    { province: '吉林', city: '长春', minLat: 40.87, maxLat: 46.30, minLng: 121.64, maxLng: 131.31 },
+    { province: '辽宁', city: '沈阳', minLat: 38.43, maxLat: 43.49, minLng: 118.83, maxLng: 125.75 },
+    { province: '河北', city: '石家庄', minLat: 36.05, maxLat: 42.62, minLng: 113.45, maxLng: 119.90 },
+    { province: '山东', city: '济南', minLat: 34.38, maxLat: 38.40, minLng: 114.77, maxLng: 122.71 },
+    { province: '河南', city: '郑州', minLat: 31.38, maxLat: 36.37, minLng: 110.35, maxLng: 116.65 },
+    { province: '山西', city: '太原', minLat: 34.58, maxLat: 40.74, minLng: 110.24, maxLng: 114.57 },
+    { province: '陕西', city: '西安', minLat: 31.72, maxLat: 39.59, minLng: 105.47, maxLng: 111.16 },
+    { province: '甘肃', city: '兰州', minLat: 32.62, maxLat: 42.82, minLng: 92.35, maxLng: 108.72 },
+    { province: '四川', city: '成都', minLat: 26.05, maxLat: 34.32, minLng: 97.22, maxLng: 108.55 },
+    { province: '湖北', city: '武汉', minLat: 29.03, maxLat: 33.27, minLng: 108.30, maxLng: 116.12 },
+    { province: '湖南', city: '长沙', minLat: 24.64, maxLat: 30.16, minLng: 108.77, maxLng: 114.26 },
+    { province: '江西', city: '南昌', minLat: 24.38, maxLat: 30.07, minLng: 113.55, maxLng: 118.51 },
+    { province: '安徽', city: '合肥', minLat: 29.40, maxLat: 34.65, minLng: 114.88, maxLng: 119.63 },
+    { province: '浙江', city: '杭州', minLat: 27.08, maxLat: 31.18, minLng: 118.02, maxLng: 123.12 },
+    { province: '江苏', city: '南京', minLat: 30.76, maxLat: 35.12, minLng: 116.36, maxLng: 121.95 },
+    { province: '福建', city: '福州', minLat: 23.33, maxLat: 28.31, minLng: 115.85, maxLng: 120.77 },
+    { province: '广东', city: '广州', minLat: 20.13, maxLat: 25.32, minLng: 109.68, maxLng: 117.20 },
+    { province: '广西', city: '南宁', minLat: 20.54, maxLat: 26.42, minLng: 104.28, maxLng: 112.13 },
+    { province: '云南', city: '昆明', minLat: 21.14, maxLat: 29.22, minLng: 97.52, maxLng: 106.20 },
+    { province: '贵州', city: '贵阳', minLat: 24.63, maxLat: 29.18, minLng: 103.58, maxLng: 109.59 },
+    { province: '海南', city: '海口', minLat: 18.10, maxLat: 20.22, minLng: 108.62, maxLng: 111.05 },
+    { province: '内蒙古', city: '呼和浩特', minLat: 37.41, maxLat: 53.55, minLng: 97.17, maxLng: 126.07 },
+    { province: '新疆', city: '乌鲁木齐', minLat: 34.33, maxLat: 49.19, minLng: 73.50, maxLng: 96.40 },
+    { province: '西藏', city: '拉萨', minLat: 26.50, maxLat: 36.50, minLng: 78.40, maxLng: 99.10 },
+    { province: '青海', city: '西宁', minLat: 31.60, maxLat: 39.20, minLng: 89.40, maxLng: 103.07 },
+    { province: '宁夏', city: '银川', minLat: 35.25, maxLat: 39.40, minLng: 104.28, maxLng: 107.70 },
+  ];
+
+  for (const region of MUNICIPALITY_BOUNDS) {
     if (lat >= region.minLat && lat <= region.maxLat && lng >= region.minLng && lng <= region.maxLng) {
       return { province: region.province, city: region.city };
     }
   }
+
+  for (const region of PROVINCE_BOUNDS) {
+    if (lat >= region.minLat && lat <= region.maxLat && lng >= region.minLng && lng <= region.maxLng) {
+      return { province: region.province, city: region.city };
+    }
+  }
+
   return null;
+}
+
+const REGION_VERIFICATION_CASES: { lat: number; lng: number; expectedProvince: string; expectedCity: string; label: string }[] = [
+  { lat: 31.2304, lng: 121.4737, expectedProvince: '上海', expectedCity: '上海', label: '上海人民广场' },
+  { lat: 39.9042, lng: 116.4074, expectedProvince: '北京', expectedCity: '北京', label: '北京天安门' },
+  { lat: 29.5630, lng: 106.5516, expectedProvince: '重庆', expectedCity: '重庆', label: '重庆解放碑' },
+  { lat: 39.0842, lng: 117.2008, expectedProvince: '天津', expectedCity: '天津', label: '天津火车站' },
+  { lat: 23.1291, lng: 113.2644, expectedProvince: '广东', expectedCity: '广州', label: '广州珠江新城' },
+  { lat: 30.5728, lng: 104.0668, expectedProvince: '四川', expectedCity: '成都', label: '成都天府广场' },
+];
+
+export function verifyRegionMapping(): { passed: boolean; results: { label: string; passed: boolean; expected: string; actual: string }[] } {
+  const results = REGION_VERIFICATION_CASES.map((testCase) => {
+    const result = latLngToRegion(testCase.lat, testCase.lng);
+    const actual = result ? `${result.province}·${result.city}` : '未匹配';
+    const expected = `${testCase.expectedProvince}·${testCase.expectedCity}`;
+    const passed = result?.province === testCase.expectedProvince && result?.city === testCase.expectedCity;
+    return {
+      label: testCase.label,
+      passed,
+      expected,
+      actual,
+    };
+  });
+
+  const allPassed = results.every((r) => r.passed);
+  return { passed: allPassed, results };
 }
 
 function calculateRegionDistribution(
