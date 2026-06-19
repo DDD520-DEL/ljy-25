@@ -26,6 +26,7 @@ interface BarkState {
   addDog: (data: Omit<DogProfile, 'id' | 'createdAt' | 'updatedAt'>) => DogProfile;
   updateDog: (id: string, data: Partial<Omit<DogProfile, 'id' | 'createdAt' | 'updatedAt'>>) => void;
   deleteDog: (id: string) => void;
+  getAllBreeds: () => string[];
   batchUpdateRecords: (ids: string[], data: Partial<BarkRecord>) => number;
   batchDeleteRecords: (ids: string[]) => number;
   batchAddTags: (ids: string[], tags: string[]) => number;
@@ -282,6 +283,17 @@ export const useBarkStore = create<BarkState>()(
             record.dogId === id ? { ...record, dogId: undefined, updatedAt: Date.now() } : record
           ),
         }));
+      },
+
+      getAllBreeds: () => {
+        const state = get();
+        const breedSet = new Set<string>();
+        state.dogs.forEach((dog) => {
+          if (dog.breed?.trim()) {
+            breedSet.add(dog.breed.trim());
+          }
+        });
+        return Array.from(breedSet).sort();
       },
 
       batchUpdateRecords: (ids: string[], data: Partial<BarkRecord>) => {

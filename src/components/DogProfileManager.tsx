@@ -3,12 +3,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Trash2, Edit2, Dog, Check } from 'lucide-react';
 import { useBarkStore } from '@/store/useBarkStore';
 import { DogProfile } from '@/types';
+import { BreedAutocomplete } from './BreedAutocomplete';
 
 export function DogProfileManager() {
   const dogs = useBarkStore((s) => s.dogs);
   const addDog = useBarkStore((s) => s.addDog);
   const updateDog = useBarkStore((s) => s.updateDog);
   const deleteDog = useBarkStore((s) => s.deleteDog);
+  const getAllBreeds = useBarkStore((s) => s.getAllBreeds);
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -104,12 +106,11 @@ export function DogProfileManager() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">品种</label>
-                  <input
-                    type="text"
-                    placeholder="如：金毛"
+                  <BreedAutocomplete
                     value={formBreed}
-                    onChange={(e) => setFormBreed(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-amber-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    onChange={setFormBreed}
+                    existingBreeds={getAllBreeds()}
+                    placeholder="如：金毛"
                   />
                 </div>
                 <div>
