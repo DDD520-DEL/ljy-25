@@ -115,6 +115,7 @@ export interface ComparisonStats {
       day: number;
       label: string;
       fullLabel: string;
+      count: number;
     } | null;
   };
   period2: {
@@ -130,6 +131,7 @@ export interface ComparisonStats {
       day: number;
       label: string;
       fullLabel: string;
+      count: number;
     } | null;
   };
   period1Label: string;

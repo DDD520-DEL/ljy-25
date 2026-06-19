@@ -284,10 +284,15 @@ export function calculateComparisonStats(
 
   const getPeakDayInfo = (summary: SummaryStats) => {
     if (summary.peakDay < 0) return null;
+    const peakDayRecords = summary.recordsByDay.filter(
+      (d) => new Date(d.timestamp).getDay() === summary.peakDay
+    );
+    const peakDayCount = peakDayRecords.reduce((sum, d) => sum + d.count, 0);
     return {
       day: summary.peakDay,
       label: WEEKDAY_SHORT[summary.peakDay],
       fullLabel: `周${WEEKDAY_SHORT[summary.peakDay]}`,
+      count: peakDayCount,
     };
   };
 

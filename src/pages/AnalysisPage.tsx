@@ -479,8 +479,8 @@ export function AnalysisPage() {
                     label="高峰星期"
                     value1={comparisonStats.period1.peakDayInfo?.fullLabel || '暂无'}
                     value2={comparisonStats.period2.peakDayInfo?.fullLabel || '暂无'}
-                    subValue1={comparisonStats.period1.peakHourInfo ? `${comparisonStats.period1.peakHourInfo.count} 次` : ''}
-                    subValue2={comparisonStats.period2.peakHourInfo ? `${comparisonStats.period2.peakHourInfo.count} 次` : ''}
+                    subValue1={comparisonStats.period1.peakDayInfo ? `${comparisonStats.period1.peakDayInfo.count} 次` : ''}
+                    subValue2={comparisonStats.period2.peakDayInfo ? `${comparisonStats.period2.peakDayInfo.count} 次` : ''}
                     label1={period1Label}
                     label2={period2Label}
                     color1="amber"
