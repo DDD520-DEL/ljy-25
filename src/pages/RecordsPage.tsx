@@ -21,6 +21,7 @@ import { TagSelector } from '@/components/TagSelector';
 import { useBarkRecords } from '@/hooks/useBarkRecords';
 import { getAllTags, filterRecordsByTags, groupRecordsByDate } from '@/utils/statistics';
 import { formatFriendlyDate } from '@/utils/date';
+import { getTagColorClasses } from '@/lib/utils';
 
 
 type BatchActionType = 'location' | 'tags' | 'delete' | null;
@@ -437,25 +438,29 @@ export function RecordsPage() {
                 </div>
 
                 <div className="flex flex-wrap gap-2 mb-3">
-                  {allTags.map((tag) => (
-                    <button
-                      key={tag}
-                      onClick={() => {
-                        setSelectedTags((prev) =>
-                          prev.includes(tag)
-                            ? prev.filter((t) => t !== tag)
-                            : [...prev, tag]
-                        );
-                      }}
-                      className={`px-3 py-1.5 text-sm rounded-full border transition-all ${
-                        selectedTags.includes(tag)
-                          ? 'bg-amber-500 text-white border-amber-500'
-                          : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-amber-300 hover:text-amber-700'
-                      }`}
-                    >
-                      {tag}
-                    </button>
-                  ))}
+                  {allTags.map((tag) => {
+                    const isSelected = selectedTags.includes(tag);
+                    const colorClasses = getTagColorClasses(tag);
+                    return (
+                      <button
+                        key={tag}
+                        onClick={() => {
+                          setSelectedTags((prev) =>
+                            prev.includes(tag)
+                              ? prev.filter((t) => t !== tag)
+                              : [...prev, tag]
+                          );
+                        }}
+                        className={`px-3 py-1.5 text-sm rounded-full border transition-all ${
+                          isSelected
+                            ? colorClasses.replace('100', '500').replace('800', 'white').replace('200', '500')
+                            : `${colorClasses} opacity-60 hover:opacity-100`
+                        }`}
+                      >
+                        {tag}
+                      </button>
+                    );
+                  })}
                 </div>
 
                 <div className="flex items-center gap-4 text-sm">
@@ -494,7 +499,7 @@ export function RecordsPage() {
             {selectedTags.map((tag) => (
               <span
                 key={tag}
-                className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-amber-100 text-amber-700 rounded-full"
+                className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border ${getTagColorClasses(tag)}`}
               >
                 {tag}
                 <button

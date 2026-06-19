@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Plus, Tag } from 'lucide-react';
 import { PRESET_TAGS } from '@/types';
+import { getTagColorClasses } from '@/lib/utils';
 
 interface TagSelectorProps {
   selectedTags: string[];
@@ -9,25 +10,6 @@ interface TagSelectorProps {
   onChange: (tags: string[]) => void;
   placeholder?: string;
   compact?: boolean;
-}
-
-const TAG_COLORS = [
-  'bg-amber-100 text-amber-800 border-amber-200',
-  'bg-coral-100 text-coral-800 border-coral-200',
-  'bg-mint-100 text-mint-800 border-mint-200',
-  'bg-blue-100 text-blue-800 border-blue-200',
-  'bg-purple-100 text-purple-800 border-purple-200',
-  'bg-pink-100 text-pink-800 border-pink-200',
-  'bg-indigo-100 text-indigo-800 border-indigo-200',
-  'bg-green-100 text-green-800 border-green-200',
-];
-
-function getTagColor(tag: string): string {
-  let hash = 0;
-  for (let i = 0; i < tag.length; i++) {
-    hash = tag.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return TAG_COLORS[Math.abs(hash) % TAG_COLORS.length];
 }
 
 export function TagSelector({
@@ -85,7 +67,7 @@ export function TagSelector({
           selectedTags.map((tag) => (
             <span
               key={tag}
-              className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border ${getTagColor(tag)}`}
+              className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border ${getTagColorClasses(tag)}`}
             >
               {tag}
               <button
@@ -148,7 +130,7 @@ export function TagSelector({
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.8 }}
-            className={`inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-full border ${getTagColor(tag)}`}
+            className={`inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-full border ${getTagColorClasses(tag)}`}
           >
             <Tag size={12} />
             {tag}

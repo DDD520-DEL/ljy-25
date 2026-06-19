@@ -6,6 +6,7 @@ import { formatFriendlyDateTime } from '@/utils/date';
 import { AudioPlayer } from '@/components/AudioPlayer';
 import { TagSelector } from '@/components/TagSelector';
 import { useBarkStore } from '@/store/useBarkStore';
+import { getTagColorClasses } from '@/lib/utils';
 
 interface RecordItemProps {
   record: BarkRecord;
@@ -177,7 +178,7 @@ export function RecordItem({ record, onDelete, onUpdate, selectable, selected, o
                       {record.tags.map((tag) => (
                         <span
                           key={tag}
-                          className="px-2 py-0.5 text-xs bg-amber-50 text-amber-700 rounded-full border border-amber-100"
+                          className={`px-2 py-0.5 text-xs rounded-full border ${getTagColorClasses(tag)}`}
                         >
                           {tag}
                         </span>
