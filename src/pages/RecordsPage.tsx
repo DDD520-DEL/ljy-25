@@ -48,6 +48,7 @@ export function RecordsPage() {
   const [tagMatchAll, setTagMatchAll] = useState(false);
   const [showTagFilter, setShowTagFilter] = useState(false);
   const [selectedRecordIds, setSelectedRecordIds] = useState<Set<string>>(new Set());
+  const [selectionMode, setSelectionMode] = useState(false);
   const [batchAction, setBatchAction] = useState<BatchActionType>(null);
   const [batchLocation, setBatchLocation] = useState('');
   const [batchTags, setBatchTags] = useState<string[]>([]);
@@ -125,6 +126,15 @@ export function RecordsPage() {
         filteredRecordIds.forEach((id) => next.add(id));
         return next;
       });
+    }
+  };
+
+  const toggleSelectionMode = () => {
+    if (selectionMode) {
+      setSelectionMode(false);
+      setSelectedRecordIds(new Set());
+    } else {
+      setSelectionMode(true);
     }
   };
 
@@ -266,7 +276,7 @@ export function RecordsPage() {
             </h1>
             <p className="text-amber-600 text-sm">
               共 {records.length} 条记录
-              {selectedRecordIds.size > 0 && (
+              {selectionMode && selectedRecordIds.size > 0 && (
                 <span className="ml-2 text-amber-700 font-medium">
                   · 已选 {selectedRecordIds.size} 条
                 </span>
@@ -274,12 +284,22 @@ export function RecordsPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {selectedRecordIds.size > 0 && (
+            {records.length > 0 && (
               <button
-                onClick={clearSelection}
-                className="px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
+                onClick={toggleSelectionMode}
+                className={`px-3 py-1.5 text-sm rounded-lg transition-colors flex items-center gap-1.5 ${
+                  selectionMode
+                    ? 'bg-amber-500 text-white hover:bg-amber-600'
+                    : 'text-amber-700 hover:bg-amber-50'
+                }`}
+                title={selectionMode ? '完成选择' : '批量选择'}
               >
-                取消选择
+                {selectionMode ? (
+                  <Check size={16} />
+                ) : (
+                  <CheckSquare size={16} />
+                )}
+                {selectionMode ? '完成' : '选择'}
               </button>
             )}
             <button
@@ -292,7 +312,7 @@ export function RecordsPage() {
           </div>
         </motion.div>
 
-        {selectedRecordIds.size > 0 && (
+        {selectionMode && selectedRecordIds.size > 0 && (
           <motion.div
             initial={{ opacity: 0, y: -10, height: 0 }}
             animate={{ opacity: 1, y: 0, height: 'auto' }}
@@ -365,7 +385,7 @@ export function RecordsPage() {
           </motion.div>
 
           <AnimatePresence>
-            {selectedRecordIds.size > 0 && (
+            {selectionMode && (
               <motion.button
                 initial={{ opacity: 0, scale: 0.8 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -513,7 +533,7 @@ export function RecordsPage() {
                 className="bg-white rounded-2xl shadow-soft overflow-hidden"
               >
                 <div className="flex items-stretch">
-                  {selectedRecordIds.size > 0 && (
+                  {selectionMode && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -590,7 +610,7 @@ export function RecordsPage() {
                               record={record}
                               onDelete={deleteRecord}
                               onUpdate={updateRecord}
-                              selectable={selectedRecordIds.size > 0}
+                              selectable={selectionMode}
                               selected={selectedRecordIds.has(record.id)}
                               onSelect={handleSelectRecord}
                             />
