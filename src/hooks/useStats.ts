@@ -5,6 +5,7 @@ import {
   calculateWeeklyStats,
   calculateSummaryStats,
   calculateTagStats,
+  calculateTagRecordDistribution,
   getAllTags,
   getMaxHourlyCount,
   getMaxWeeklyCount,
@@ -65,6 +66,11 @@ export function useStats() {
 
   const tagStats = useMemo(() => calculateTagStats(records), [records]);
   
+  const tagRecordDistribution = useMemo(
+    () => calculateTagRecordDistribution(records),
+    [records]
+  );
+  
   const allTags = useMemo(() => getAllTags(records), [records]);
 
   const hasData = useMemo(() => records.length > 0, [records]);
@@ -81,6 +87,7 @@ export function useStats() {
     chartData,
     heatmapData,
     tagStats,
+    tagRecordDistribution,
     allTags,
     hasData,
   };

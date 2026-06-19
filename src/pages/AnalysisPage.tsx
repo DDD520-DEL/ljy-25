@@ -24,7 +24,7 @@ export function AnalysisPage() {
     summaryStats,
     peakHourInfo,
     peakDayInfo,
-    tagStats,
+    tagRecordDistribution,
   } = useStats();
 
   if (!hasData) {
@@ -156,7 +156,7 @@ export function AnalysisPage() {
           <WeeklyHeatmap data={heatmapData} maxCount={maxWeeklyCount} />
         </motion.div>
 
-        {tagStats.length > 0 && (
+        {tagRecordDistribution.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -164,7 +164,7 @@ export function AnalysisPage() {
             className="mb-6"
           >
             <TagPieChart
-              data={tagStats}
+              data={tagRecordDistribution}
               totalRecords={summaryStats.totalRecords}
             />
           </motion.div>

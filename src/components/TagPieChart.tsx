@@ -1,9 +1,13 @@
 import { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
-import { TagStats } from '@/types';
+import {
+  TagRecordDistribution,
+  MULTI_TAG_KEY,
+  UNTAGGED_KEY,
+} from '@/utils/statistics';
 
-const CHART_COLORS = [
+const TAG_COLORS = [
   '#F59E0B',
   '#EF4444',
   '#10B981',
@@ -16,12 +20,26 @@ const CHART_COLORS = [
   '#84CC16',
 ];
 
-function getChartColor(index: number): string {
-  return CHART_COLORS[index % CHART_COLORS.length];
+const MULTI_TAG_COLOR = '#64748B';
+const UNTAGGED_COLOR = '#9CA3AF';
+
+const DISPLAY_NAMES: Record<string, string> = {
+  [MULTI_TAG_KEY]: '多标签',
+  [UNTAGGED_KEY]: '未打标',
+};
+
+function getChartColor(tag: string, index: number): string {
+  if (tag === MULTI_TAG_KEY) return MULTI_TAG_COLOR;
+  if (tag === UNTAGGED_KEY) return UNTAGGED_COLOR;
+  return TAG_COLORS[index % TAG_COLORS.length];
+}
+
+function getDisplayName(tag: string): string {
+  return DISPLAY_NAMES[tag] || tag;
 }
 
 interface TagPieChartProps {
-  data: TagStats[];
+  data: TagRecordDistribution[];
   totalRecords: number;
 }
 
@@ -34,7 +52,6 @@ interface CustomLabelProps {
   innerRadius: number;
   outerRadius: number;
   percent: number;
-  index: number;
 }
 
 const renderCustomizedLabel = ({
@@ -68,27 +85,27 @@ const renderCustomizedLabel = ({
 
 export function TagPieChart({ data, totalRecords }: TagPieChartProps) {
   const chartData = useMemo(() => {
-    const taggedCount = data.reduce((sum, item) => sum + item.count, 0);
-    const untaggedCount = totalRecords - taggedCount;
+    let colorIndex = 0;
+    return data.map((item) => {
+      const isSpecial = item.tag === MULTI_TAG_KEY || item.tag === UNTAGGED_KEY;
+      const fill = isSpecial
+        ? getChartColor(item.tag, 0)
+        : getChartColor(item.tag, colorIndex++);
 
-    const result = data.map((item, index) => ({
-      name: item.tag,
-      value: item.count,
-      percentage: item.percentage,
-      fill: getChartColor(index),
-    }));
+      return {
+        key: item.tag,
+        name: getDisplayName(item.tag),
+        value: item.count,
+        percentage: item.percentage,
+        fill,
+      };
+    });
+  }, [data]);
 
-    if (untaggedCount > 0) {
-      result.push({
-        name: '未打标',
-        value: untaggedCount,
-        percentage: (untaggedCount / totalRecords) * 100,
-        fill: '#9CA3AF',
-      });
-    }
-
-    return result;
-  }, [data, totalRecords]);
+  const actualTotal = useMemo(
+    () => data.reduce((sum, item) => sum + item.count, 0),
+    [data]
+  );
 
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
@@ -97,7 +114,7 @@ export function TagPieChart({ data, totalRecords }: TagPieChartProps) {
         <div className="bg-white px-3 py-2 rounded-lg shadow-lg border border-gray-100">
           <p className="font-medium text-gray-800">{item.name}</p>
           <p className="text-sm text-gray-600">
-            {item.value} 次 ({item.percentage.toFixed(1)}%)
+            {item.value} 条 ({item.percentage.toFixed(1)}%)
           </p>
         </div>
       );
@@ -105,7 +122,7 @@ export function TagPieChart({ data, totalRecords }: TagPieChartProps) {
     return null;
   };
 
-  if (data.length === 0 && totalRecords === 0) {
+  if (data.length === 0) {
     return (
       <div className="text-center py-12 bg-gray-50 rounded-xl">
         <div className="text-4xl mb-3">🏷️</div>
@@ -114,15 +131,26 @@ export function TagPieChart({ data, totalRecords }: TagPieChartProps) {
     );
   }
 
+  const untaggedItem = data.find((d) => d.tag === UNTAGGED_KEY);
+  const multiTagItem = data.find((d) => d.tag === MULTI_TAG_KEY);
+  const singleTagItems = data.filter(
+    (d) => d.tag !== UNTAGGED_KEY && d.tag !== MULTI_TAG_KEY
+  );
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       className="bg-white rounded-2xl p-5 shadow-soft"
     >
-      <h3 className="font-display text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-        🏷️ 标签分布
-      </h3>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-display text-lg font-bold text-gray-800 flex items-center gap-2">
+          🏷️ 标签分布
+        </h3>
+        <span className="text-xs text-gray-400">
+          共 {totalRecords} 条{actualTotal !== totalRecords && ` (实际 ${actualTotal})`}
+        </span>
+      </div>
 
       <div className="h-64">
         <ResponsiveContainer width="100%" height="100%">
@@ -151,7 +179,7 @@ export function TagPieChart({ data, totalRecords }: TagPieChartProps) {
                 const item = entry.payload;
                 return (
                   <span className="text-sm text-gray-700">
-                    {value} ({item.value}次)
+                    {value} ({item.value}条)
                   </span>
                 );
               }}
@@ -160,25 +188,59 @@ export function TagPieChart({ data, totalRecords }: TagPieChartProps) {
         </ResponsiveContainer>
       </div>
 
-      {chartData.length > 0 && (
+      {(singleTagItems.length > 0 || multiTagItem || untaggedItem) && (
         <div className="mt-4 pt-4 border-t border-gray-100">
           <div className="grid grid-cols-2 gap-2">
-            {chartData.slice(0, 4).map((item, index) => (
-              <div
-                key={item.name}
-                className="flex items-center gap-2 text-sm"
-              >
+            {singleTagItems.slice(0, 2).map((item, index) => (
+              <div key={item.tag} className="flex items-center gap-2 text-sm">
                 <div
                   className="w-3 h-3 rounded-full"
-                  style={{ backgroundColor: item.fill }}
+                  style={{ backgroundColor: getChartColor(item.tag, index) }}
                 />
-                <span className="text-gray-700 truncate">{item.name}</span>
+                <span className="text-gray-700 truncate">
+                  {getDisplayName(item.tag)}
+                </span>
                 <span className="text-gray-500 ml-auto">
                   {item.percentage.toFixed(0)}%
                 </span>
               </div>
             ))}
+            {multiTagItem && (
+              <div className="flex items-center gap-2 text-sm">
+                <div
+                  className="w-3 h-3 rounded-full"
+                  style={{ backgroundColor: MULTI_TAG_COLOR }}
+                />
+                <span className="text-gray-700 truncate">多标签</span>
+                <span className="text-gray-500 ml-auto">
+                  {multiTagItem.percentage.toFixed(0)}%
+                </span>
+              </div>
+            )}
+            {untaggedItem && (
+              <div className="flex items-center gap-2 text-sm">
+                <div
+                  className="w-3 h-3 rounded-full"
+                  style={{ backgroundColor: UNTAGGED_COLOR }}
+                />
+                <span className="text-gray-700 truncate">未打标</span>
+                <span className="text-gray-500 ml-auto">
+                  {untaggedItem.percentage.toFixed(0)}%
+                </span>
+              </div>
+            )}
           </div>
+
+          {multiTagItem && (
+            <div className="mt-3 pt-3 border-t border-gray-50 text-xs text-gray-500 flex items-start gap-2">
+              <span className="inline-block w-1.5 h-1.5 mt-1.5 rounded-full bg-slate-400 flex-shrink-0" />
+              <span>
+                「多标签」包含 {multiTagItem.count} 条打了 2 个及以上标签的记录
+                {untaggedItem &&
+                  `，「未打标」包含 ${untaggedItem.count} 条未打标签的记录`}
+              </span>
+            </div>
+          )}
         </div>
       )}
     </motion.div>

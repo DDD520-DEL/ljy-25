@@ -160,6 +160,65 @@ export function calculateTagStats(records: BarkRecord[]): TagStats[] {
   return stats.sort((a, b) => b.count - a.count);
 }
 
+export interface TagRecordDistribution {
+  tag: string;
+  count: number;
+  percentage: number;
+}
+
+export const MULTI_TAG_KEY = '__multi_tag__';
+export const UNTAGGED_KEY = '__untagged__';
+
+export function calculateTagRecordDistribution(
+  records: BarkRecord[]
+): TagRecordDistribution[] {
+  const singleTagCounts = new Map<string, number>();
+  let multiTagCount = 0;
+  let untaggedCount = 0;
+
+  records.forEach(record => {
+    const tags = record.tags || [];
+    if (tags.length === 0) {
+      untaggedCount++;
+    } else if (tags.length === 1) {
+      singleTagCounts.set(tags[0], (singleTagCounts.get(tags[0]) || 0) + 1);
+    } else {
+      multiTagCount++;
+    }
+  });
+
+  const total = records.length;
+  const result: TagRecordDistribution[] = [];
+
+  Array.from(singleTagCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .forEach(([tag, count]) => {
+      result.push({
+        tag,
+        count,
+        percentage: total > 0 ? (count / total) * 100 : 0,
+      });
+    });
+
+  if (multiTagCount > 0) {
+    result.push({
+      tag: MULTI_TAG_KEY,
+      count: multiTagCount,
+      percentage: total > 0 ? (multiTagCount / total) * 100 : 0,
+    });
+  }
+
+  if (untaggedCount > 0) {
+    result.push({
+      tag: UNTAGGED_KEY,
+      count: untaggedCount,
+      percentage: total > 0 ? (untaggedCount / total) * 100 : 0,
+    });
+  }
+
+  return result;
+}
+
 export function filterRecordsByTags(
   records: BarkRecord[],
   selectedTags: string[],
