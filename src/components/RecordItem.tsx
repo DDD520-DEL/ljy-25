@@ -11,11 +11,21 @@ interface RecordItemProps {
   record: BarkRecord;
   onDelete: (id: string) => void;
   onUpdate: (id: string, data: Partial<BarkRecord>) => void;
+  selectable?: boolean;
+  selected?: boolean;
+  onSelect?: (id: string, selected: boolean) => void;
 }
 
-export function RecordItem({ record, onDelete, onUpdate }: RecordItemProps) {
+export function RecordItem({ record, onDelete, onUpdate, selectable, selected, onSelect }: RecordItemProps) {
   const dogs = useBarkStore((s) => s.dogs);
   const dogName = record.dogId ? dogs.find((d) => d.id === record.dogId)?.name : undefined;
+
+  const handleCheckboxClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onSelect) {
+      onSelect(record.id, !selected);
+    }
+  };
 
   const [isEditing, setIsEditing] = useState(false);
   const [showActions, setShowActions] = useState(false);
@@ -79,11 +89,26 @@ export function RecordItem({ record, onDelete, onUpdate }: RecordItemProps) {
       initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, height: 0 }}
-      className="bg-white rounded-xl p-4 shadow-soft hover:shadow-md transition-shadow"
+      className={`bg-white rounded-xl p-4 shadow-soft hover:shadow-md transition-shadow ${
+        selected ? 'ring-2 ring-amber-400 bg-amber-50/30' : ''
+      }`}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => !isEditing && setShowActions(false)}
     >
       <div className="flex items-start gap-3">
+        {selectable && (
+          <button
+            onClick={handleCheckboxClick}
+            className={`mt-1 w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-all ${
+              selected
+                ? 'bg-amber-500 border-amber-500 text-white'
+                : 'border-gray-300 hover:border-amber-400'
+            }`}
+            title={selected ? '取消选择' : '选择此记录'}
+          >
+            {selected && <Check size={12} strokeWidth={3} />}
+          </button>
+        )}
         <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
           <Clock className="text-amber-600" size={18} />
         </div>

@@ -18,6 +18,9 @@ export function useBarkRecords() {
   const importRecords = useBarkStore((state) => state.importRecords);
   const settings = useBarkStore((state) => state.settings);
   const updateSettings = useBarkStore((state) => state.updateSettings);
+  const batchUpdateRecords = useBarkStore((state) => state.batchUpdateRecords);
+  const batchDeleteRecords = useBarkStore((state) => state.batchDeleteRecords);
+  const batchAddTags = useBarkStore((state) => state.batchAddTags);
 
   const todayRecords = useMemo(() => getTodayRecords(records), [records]);
   
@@ -67,5 +70,8 @@ export function useBarkRecords() {
     importRecords,
     settings,
     updateSettings,
+    batchUpdateRecords,
+    batchDeleteRecords,
+    batchAddTags,
   };
 }

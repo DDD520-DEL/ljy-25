@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search,
@@ -9,24 +9,52 @@ import {
   AlertTriangle,
   Tag,
   Filter,
+  Check,
+  CheckSquare,
+  Square,
+  MapPin,
+  X,
+  Info,
 } from 'lucide-react';
 import { RecordItem } from '@/components/RecordItem';
+import { TagSelector } from '@/components/TagSelector';
 import { useBarkRecords } from '@/hooks/useBarkRecords';
 import { getAllTags, filterRecordsByTags, groupRecordsByDate } from '@/utils/statistics';
 import { formatFriendlyDate } from '@/utils/date';
 
+
+type BatchActionType = 'location' | 'tags' | 'delete' | null;
+
+interface ToastMessage {
+  id: string;
+  type: 'success' | 'error' | 'info';
+  message: string;
+}
+
 export function RecordsPage() {
-  const { records, deleteRecord, updateRecord, clearAllRecords } =
-    useBarkRecords();
+  const {
+    records,
+    deleteRecord,
+    updateRecord,
+    clearAllRecords,
+    batchUpdateRecords,
+    batchDeleteRecords,
+    batchAddTags,
+  } = useBarkRecords();
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagMatchAll, setTagMatchAll] = useState(false);
   const [showTagFilter, setShowTagFilter] = useState(false);
+  const [selectedRecordIds, setSelectedRecordIds] = useState<Set<string>>(new Set());
+  const [batchAction, setBatchAction] = useState<BatchActionType>(null);
+  const [batchLocation, setBatchLocation] = useState('');
+  const [batchTags, setBatchTags] = useState<string[]>([]);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const allTags = useMemo(() => getAllTags(records), [records]);
-  
+
   const filteredRecords = useMemo(() => {
     let result = records;
 
@@ -47,6 +75,125 @@ export function RecordsPage() {
 
     return result;
   }, [records, selectedTags, tagMatchAll, searchQuery]);
+
+  const filteredRecordIds = useMemo<Set<string>>(
+    () => new Set(filteredRecords.map((r) => r.id)),
+    [filteredRecords]
+  );
+  const allFilteredSelected = useMemo(
+    () =>
+      filteredRecords.length > 0 &&
+      filteredRecords.every((r) => selectedRecordIds.has(r.id)),
+    [filteredRecords, selectedRecordIds]
+  );
+
+
+  const showToast = (type: ToastMessage['type'], message: string) => {
+    const id = Date.now().toString();
+    setToasts((prev) => [...prev, { id, type, message }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 3000);
+  };
+
+  const dismissToast = (id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  const handleSelectRecord = (id: string, selected: boolean) => {
+    setSelectedRecordIds((prev) => {
+      const next = new Set(prev);
+      if (selected) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAllFiltered = () => {
+    if (allFilteredSelected) {
+      setSelectedRecordIds((prev) => {
+        const next = new Set(prev);
+        filteredRecordIds.forEach((id) => next.delete(id));
+        return next;
+      });
+    } else {
+      setSelectedRecordIds((prev) => {
+        const next = new Set(prev);
+        filteredRecordIds.forEach((id) => next.add(id));
+        return next;
+      });
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedRecordIds(new Set());
+  };
+
+  const handleBatchActionClick = (action: BatchActionType) => {
+    if (selectedRecordIds.size === 0) {
+      showToast('info', '请先选择要操作的记录');
+      return;
+    }
+    setBatchAction(action);
+    setBatchLocation('');
+    setBatchTags([]);
+  };
+
+  const handleBatchActionConfirm = () => {
+    const ids = Array.from(selectedRecordIds);
+
+    switch (batchAction) {
+      case 'location': {
+        const trimmed = batchLocation.trim();
+        if (!trimmed) {
+          showToast('error', '请输入位置信息');
+          return;
+        }
+        const updated = batchUpdateRecords(ids, { location: trimmed });
+        showToast('success', `已成功更新 ${updated} 条记录的位置`);
+        break;
+      }
+      case 'tags': {
+        if (batchTags.length === 0) {
+          showToast('error', '请选择至少一个标签');
+          return;
+        }
+        const updated = batchAddTags(ids, batchTags);
+        showToast('success', `已为 ${updated} 条记录添加标签`);
+        break;
+      }
+      case 'delete': {
+        const deleted = batchDeleteRecords(ids);
+        showToast('success', `已成功删除 ${deleted} 条记录`);
+        break;
+      }
+    }
+
+    setBatchAction(null);
+    clearSelection();
+  };
+
+  const handleBatchActionCancel = () => {
+    setBatchAction(null);
+    setBatchLocation('');
+    setBatchTags([]);
+  };
+
+  useEffect(() => {
+    const existingIds = new Set(records.map((r) => r.id));
+    setSelectedRecordIds((prev) => {
+      const next = new Set(prev);
+      next.forEach((id) => {
+        if (!existingIds.has(id)) {
+          next.delete(id);
+        }
+      });
+      return next;
+    });
+  }, [records]);
 
   const filteredGroups = useMemo(() => {
     return groupRecordsByDate(filteredRecords);
@@ -119,46 +266,130 @@ export function RecordsPage() {
             </h1>
             <p className="text-amber-600 text-sm">
               共 {records.length} 条记录
+              {selectedRecordIds.size > 0 && (
+                <span className="ml-2 text-amber-700 font-medium">
+                  · 已选 {selectedRecordIds.size} 条
+                </span>
+              )}
             </p>
           </div>
-          <button
-            onClick={() => setShowClearConfirm(true)}
-            className="p-2 text-coral-500 hover:bg-coral-50 rounded-lg transition-colors"
-            title="清空所有记录"
-          >
-            <Trash2 size={20} />
-          </button>
+          <div className="flex items-center gap-2">
+            {selectedRecordIds.size > 0 && (
+              <button
+                onClick={clearSelection}
+                className="px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                取消选择
+              </button>
+            )}
+            <button
+              onClick={() => setShowClearConfirm(true)}
+              className="p-2 text-coral-500 hover:bg-coral-50 rounded-lg transition-colors"
+              title="清空所有记录"
+            >
+              <Trash2 size={20} />
+            </button>
+          </div>
         </motion.div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="relative mb-4"
-        >
-          <Search
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-            size={18}
-          />
-          <input
-            type="text"
-            placeholder="搜索备注、位置、标签..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-12 py-3 bg-white border border-amber-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400 shadow-sm"
-          />
-          {allTags.length > 0 && (
-            <button
-              onClick={() => setShowTagFilter(prev => !prev)}
-              className={`absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-colors ${
-                selectedTags.length > 0 ? 'bg-amber-100 text-amber-700' : 'text-gray-400 hover:text-amber-600 hover:bg-amber-50'
+        {selectedRecordIds.size > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: -10, height: 0 }}
+            animate={{ opacity: 1, y: 0, height: 'auto' }}
+            exit={{ opacity: 0, y: -10, height: 0 }}
+            className="mb-4 bg-amber-50 border border-amber-200 rounded-xl p-3"
+          >
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2 text-sm text-amber-700 font-medium">
+                <CheckSquare size={16} />
+                <span>已选择 {selectedRecordIds.size} 条记录</span>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={() => handleBatchActionClick('location')}
+                  className="px-3 py-1.5 text-sm bg-white border border-amber-300 text-amber-700 rounded-lg hover:bg-amber-100 transition-colors flex items-center gap-1.5"
+                >
+                  <MapPin size={14} />
+                  修改位置
+                </button>
+                <button
+                  onClick={() => handleBatchActionClick('tags')}
+                  className="px-3 py-1.5 text-sm bg-white border border-amber-300 text-amber-700 rounded-lg hover:bg-amber-100 transition-colors flex items-center gap-1.5"
+                >
+                  <Tag size={14} />
+                  打标签
+                </button>
+                <button
+                  onClick={() => handleBatchActionClick('delete')}
+                  className="px-3 py-1.5 text-sm bg-white border border-coral-300 text-coral-600 rounded-lg hover:bg-coral-50 transition-colors flex items-center gap-1.5"
+                >
+                  <Trash2 size={14} />
+                  批量删除
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        <div className="flex items-center gap-2 mb-4">
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="relative flex-1"
+          >
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              size={18}
+            />
+            <input
+              type="text"
+              placeholder="搜索备注、位置、标签..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className={`w-full py-3 bg-white border border-amber-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400 shadow-sm ${
+                selectedRecordIds.size > 0 ? 'pl-10 pr-12' : 'pl-10 pr-12'
               }`}
-              title="标签筛选"
-            >
-              <Filter size={18} />
-            </button>
-          )}
-        </motion.div>
+            />
+            {allTags.length > 0 && (
+              <button
+                onClick={() => setShowTagFilter(prev => !prev)}
+                className={`absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-colors ${
+                  selectedTags.length > 0 ? 'bg-amber-100 text-amber-700' : 'text-gray-400 hover:text-amber-600 hover:bg-amber-50'
+                }`}
+                title="标签筛选"
+              >
+                <Filter size={18} />
+              </button>
+            )}
+          </motion.div>
+
+          <AnimatePresence>
+            {selectedRecordIds.size > 0 && (
+              <motion.button
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                onClick={handleSelectAllFiltered}
+                className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl border transition-colors ${
+                  allFilteredSelected
+                    ? 'bg-amber-500 text-white border-amber-500'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-amber-300 hover:text-amber-700'
+                }`}
+                title={
+                  allFilteredSelected ? '取消全选' : '全选当前筛选结果'
+                }
+              >
+                {allFilteredSelected ? (
+                  <CheckSquare size={16} />
+                ) : (
+                  <Square size={16} />
+                )}
+                <span className="text-sm font-medium">全选</span>
+              </motion.button>
+            )}
+          </AnimatePresence>
+        </div>
 
         <AnimatePresence>
           {showTagFilter && allTags.length > 0 && (
@@ -281,25 +512,62 @@ export function RecordsPage() {
                 transition={{ delay: 0.2 + groupIndex * 0.1 }}
                 className="bg-white rounded-2xl shadow-soft overflow-hidden"
               >
-                <button
-                  onClick={() => toggleDate(date)}
-                  className="w-full px-4 py-3 flex items-center justify-between bg-amber-50 hover:bg-amber-100 transition-colors"
-                >
-                  <div className="flex items-center gap-2">
-                    <Calendar size={18} className="text-amber-600" />
-                    <span className="font-medium text-gray-800">
-                      {formatFriendlyDate(dayRecords[0].timestamp)}
-                    </span>
-                    <span className="px-2 py-0.5 bg-amber-200 text-amber-800 text-xs font-medium rounded-full">
-                      {dayRecords.length} 次
-                    </span>
-                  </div>
-                  {expandedDates.has(date) ? (
-                    <ChevronUp size={18} className="text-amber-600" />
-                  ) : (
-                    <ChevronDown size={18} className="text-amber-600" />
+                <div className="flex items-stretch">
+                  {selectedRecordIds.size > 0 && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const allSelected = dayRecords.every((r) =>
+                          selectedRecordIds.has(r.id)
+                        );
+                        setSelectedRecordIds((prev) => {
+                          const next = new Set(prev);
+                          dayRecords.forEach((r) => {
+                            if (allSelected) {
+                              next.delete(r.id);
+                            } else {
+                              next.add(r.id);
+                            }
+                          });
+                          return next;
+                        });
+                      }}
+                      className="px-2 bg-amber-100 hover:bg-amber-200 border-r border-amber-200 transition-colors"
+                      title={
+                        dayRecords.every((r) => selectedRecordIds.has(r.id))
+                          ? '取消选择当天记录'
+                          : '选择当天所有记录'
+                      }
+                    >
+                      {dayRecords.every((r) => selectedRecordIds.has(r.id)) ? (
+                        <CheckSquare size={16} className="text-amber-700" />
+                      ) : dayRecords.some((r) => selectedRecordIds.has(r.id)) ? (
+                        <CheckSquare size={16} className="text-amber-500 opacity-60" />
+                      ) : (
+                        <Square size={16} className="text-amber-500" />
+                      )}
+                    </button>
                   )}
-                </button>
+                  <button
+                    onClick={() => toggleDate(date)}
+                    className="flex-1 px-4 py-3 flex items-center justify-between bg-amber-50 hover:bg-amber-100 transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Calendar size={18} className="text-amber-600" />
+                      <span className="font-medium text-gray-800">
+                        {formatFriendlyDate(dayRecords[0].timestamp)}
+                      </span>
+                      <span className="px-2 py-0.5 bg-amber-200 text-amber-800 text-xs font-medium rounded-full">
+                        {dayRecords.length} 次
+                      </span>
+                    </div>
+                    {expandedDates.has(date) ? (
+                      <ChevronUp size={18} className="text-amber-600" />
+                    ) : (
+                      <ChevronDown size={18} className="text-amber-600" />
+                    )}
+                  </button>
+                </div>
 
                 <AnimatePresence>
                   {expandedDates.has(date) && (
@@ -322,6 +590,9 @@ export function RecordsPage() {
                               record={record}
                               onDelete={deleteRecord}
                               onUpdate={updateRecord}
+                              selectable={selectedRecordIds.size > 0}
+                              selected={selectedRecordIds.has(record.id)}
+                              onSelect={handleSelectRecord}
                             />
                           </motion.div>
                         ))}
@@ -380,6 +651,151 @@ export function RecordsPage() {
             </motion.div>
           </motion.div>
         )}
+
+        {batchAction && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            onClick={handleBatchActionCancel}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-2xl p-6 max-w-sm w-full"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <div
+                  className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                    batchAction === 'delete' ? 'bg-coral-100' : 'bg-amber-100'
+                  }`}
+                >
+                  {batchAction === 'location' && (
+                    <MapPin className="text-amber-600" size={24} />
+                  )}
+                  {batchAction === 'tags' && (
+                    <Tag className="text-amber-600" size={24} />
+                  )}
+                  {batchAction === 'delete' && (
+                    <AlertTriangle className="text-coral-600" size={24} />
+                  )}
+                </div>
+                <div>
+                  <h3 className="font-bold text-gray-800">
+                    {batchAction === 'location' && '批量修改位置'}
+                    {batchAction === 'tags' && '批量添加标签'}
+                    {batchAction === 'delete' && '确认批量删除'}
+                  </h3>
+                  <p className="text-sm text-gray-500">
+                    影响 {selectedRecordIds.size} 条记录
+                  </p>
+                </div>
+              </div>
+
+              <div className="mb-6">
+                {batchAction === 'location' && (
+                  <div>
+                    <p className="text-gray-600 mb-3">
+                      将为选中的 {selectedRecordIds.size} 条记录设置新位置：
+                    </p>
+                    <input
+                      type="text"
+                      placeholder="输入新位置（如：3号楼东侧）"
+                      value={batchLocation}
+                      onChange={(e) => setBatchLocation(e.target.value)}
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      autoFocus
+                    />
+                  </div>
+                )}
+
+                {batchAction === 'tags' && (
+                  <div>
+                    <p className="text-gray-600 mb-3">
+                      将为选中的 {selectedRecordIds.size} 条记录添加以下标签（不会移除已有标签）：
+                    </p>
+                    <TagSelector
+                      selectedTags={batchTags}
+                      onChange={setBatchTags}
+                      availableTags={allTags}
+                      placeholder="输入自定义标签..."
+                    />
+                  </div>
+                )}
+
+                {batchAction === 'delete' && (
+                  <div className="bg-coral-50 border border-coral-200 rounded-xl p-4">
+                    <p className="text-coral-700 font-medium mb-2">
+                      ⚠️ 此操作不可恢复
+                    </p>
+                    <p className="text-coral-600 text-sm">
+                      确定要删除选中的 {selectedRecordIds.size} 条记录吗？
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={handleBatchActionCancel}
+                  className="flex-1 py-2.5 px-4 border border-gray-200 rounded-xl text-gray-600 hover:bg-gray-50 transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleBatchActionConfirm}
+                  className={`flex-1 py-2.5 px-4 text-white rounded-xl transition-colors ${
+                    batchAction === 'delete'
+                      ? 'bg-coral-500 hover:bg-coral-600'
+                      : 'bg-amber-500 hover:bg-amber-600'
+                  }`}
+                >
+                  {batchAction === 'location' && '确认修改'}
+                  {batchAction === 'tags' && '确认添加'}
+                  {batchAction === 'delete' && '确认删除'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {toasts.map((toast, index) => (
+          <motion.div
+            key={toast.id}
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            transition={{ duration: 0.2 }}
+            className="fixed top-4 left-1/2 -translate-x-1/2 z-[100]"
+            style={{ marginTop: `${index * 56}px` }}
+          >
+            <div
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg min-w-[280px] ${
+                toast.type === 'success'
+                  ? 'bg-green-500 text-white'
+                  : toast.type === 'error'
+                  ? 'bg-coral-500 text-white'
+                  : 'bg-gray-800 text-white'
+              }`}
+            >
+              {toast.type === 'success' && <Check size={18} />}
+              {toast.type === 'error' && <X size={18} />}
+              {toast.type === 'info' && <Info size={18} />}
+              <span className="text-sm font-medium flex-1">{toast.message}</span>
+              <button
+                onClick={() => dismissToast(toast.id)}
+                className="p-0.5 hover:bg-white/20 rounded transition-colors"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </motion.div>
+        ))}
       </AnimatePresence>
     </div>
   );

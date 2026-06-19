@@ -24,6 +24,9 @@ interface BarkState {
   addDog: (data: Omit<DogProfile, 'id' | 'createdAt' | 'updatedAt'>) => DogProfile;
   updateDog: (id: string, data: Partial<Omit<DogProfile, 'id' | 'createdAt' | 'updatedAt'>>) => void;
   deleteDog: (id: string) => void;
+  batchUpdateRecords: (ids: string[], data: Partial<BarkRecord>) => number;
+  batchDeleteRecords: (ids: string[]) => number;
+  batchAddTags: (ids: string[], tags: string[]) => number;
 }
 
 const initialSettings: AppSettings = {
@@ -42,7 +45,7 @@ const initialSettings: AppSettings = {
 
 export const useBarkStore = create<BarkState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       records: [],
       dogs: [],
       settings: initialSettings,
@@ -131,7 +134,7 @@ export const useBarkStore = create<BarkState>()(
       },
 
       getAllTags: () => {
-        const state = useBarkStore.getState();
+        const state = get();
         const tagSet = new Set<string>();
         state.records.forEach((record) => {
           record.tags?.forEach((tag) => tagSet.add(tag));
@@ -236,6 +239,46 @@ export const useBarkStore = create<BarkState>()(
             record.dogId === id ? { ...record, dogId: undefined } : record
           ),
         }));
+      },
+
+      batchUpdateRecords: (ids: string[], data: Partial<BarkRecord>) => {
+        const idSet = new Set(ids);
+        let updatedCount = 0;
+        set((state) => ({
+          records: state.records.map((record) => {
+            if (idSet.has(record.id)) {
+              updatedCount++;
+              return { ...record, ...data, updatedAt: Date.now() };
+            }
+            return record;
+          }),
+        }));
+        return updatedCount;
+      },
+
+      batchDeleteRecords: (ids: string[]) => {
+        const idSet = new Set(ids);
+        const initialLength = get().records.length;
+        set((state) => ({
+          records: state.records.filter((record) => !idSet.has(record.id)),
+        }));
+        return initialLength - get().records.length;
+      },
+
+      batchAddTags: (ids: string[], tags: string[]) => {
+        const idSet = new Set(ids);
+        let updatedCount = 0;
+        set((state) => ({
+          records: state.records.map((record) => {
+            if (idSet.has(record.id)) {
+              updatedCount++;
+              const newTags = Array.from(new Set([...(record.tags || []), ...tags]));
+              return { ...record, tags: newTags, updatedAt: Date.now() };
+            }
+            return record;
+          }),
+        }));
+        return updatedCount;
       },
     }),
     {
