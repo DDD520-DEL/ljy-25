@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { User, SyncStatus } from '@/types';
+import { User, SyncStatus, SyncStats } from '@/types';
 import * as syncService from '@/services/syncService';
 
 interface AuthState {
@@ -9,23 +9,53 @@ interface AuthState {
   isLoading: boolean;
   error: string | null;
   syncStatus: SyncStatus;
+  syncQueue: Promise<unknown>;
   login: (username: string, password: string) => Promise<void>;
   register: (username: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   validateSession: () => Promise<boolean>;
-  setSyncing: (isSyncing: boolean) => void;
-  setLastSync: (direction: 'push' | 'pull' | 'full', serverTime: number) => void;
+  enqueueSync: <T>(
+    task: () => Promise<T>,
+    type: 'push' | 'pull' | 'full'
+  ) => Promise<T>;
+  setSyncing: (
+    isSyncing: boolean,
+    type: 'push' | 'pull' | 'full' | null
+  ) => void;
+  setLastSync: (
+    direction: 'push' | 'pull' | 'full',
+    serverTime: number,
+    stats: Partial<SyncStats>,
+    message: string
+  ) => void;
   setSyncError: (error: string | undefined) => void;
   setPendingChanges: (count: number) => void;
+  setJustLoggedIn: (value: boolean) => void;
   clearError: () => void;
 }
+
+const initialSyncStats: SyncStats = {
+  recordsPushed: 0,
+  dogsPushed: 0,
+  recordsPulled: 0,
+  dogsPulled: 0,
+  recordsMerged: 0,
+  dogsMerged: 0,
+  deletedLocal: 0,
+};
 
 const initialSyncStatus: SyncStatus = {
   lastSyncAt: 0,
   lastSyncDirection: null,
+  lastSyncSuccess: false,
+  lastSyncMessage: '',
   pendingChanges: 0,
   isSyncing: false,
+  currentSyncType: null,
   lastError: undefined,
+  lastSyncStats: initialSyncStats,
+  queueSize: 0,
+  justLoggedIn: false,
 };
 
 export const useAuthStore = create<AuthState>()(
@@ -36,6 +66,7 @@ export const useAuthStore = create<AuthState>()(
       isLoading: false,
       error: null,
       syncStatus: initialSyncStatus,
+      syncQueue: Promise.resolve(),
 
       login: async (username: string, password: string) => {
         set({ isLoading: true, error: null });
@@ -46,6 +77,12 @@ export const useAuthStore = create<AuthState>()(
             isAuthenticated: true,
             isLoading: false,
           });
+          set((state) => ({
+            syncStatus: {
+              ...state.syncStatus,
+              justLoggedIn: true,
+            },
+          }));
         } catch (err) {
           set({
             error: err instanceof Error ? err.message : '登录失败',
@@ -64,6 +101,12 @@ export const useAuthStore = create<AuthState>()(
             isAuthenticated: true,
             isLoading: false,
           });
+          set((state) => ({
+            syncStatus: {
+              ...state.syncStatus,
+              justLoggedIn: true,
+            },
+          }));
         } catch (err) {
           set({
             error: err instanceof Error ? err.message : '注册失败',
@@ -87,6 +130,7 @@ export const useAuthStore = create<AuthState>()(
           isAuthenticated: false,
           error: null,
           syncStatus: initialSyncStatus,
+          syncQueue: Promise.resolve(),
         });
       },
 
@@ -106,18 +150,86 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      setSyncing: (isSyncing: boolean) => {
+      enqueueSync: async <T,>(
+        task: () => Promise<T>,
+        type: 'push' | 'pull' | 'full'
+      ): Promise<T> => {
+        const state = get();
+        const currentQueue = state.syncQueue;
+
+        set((s) => ({
+          syncStatus: {
+            ...s.syncStatus,
+            queueSize: s.syncStatus.queueSize + 1,
+          },
+        }));
+
+        const nextTask = currentQueue
+          .catch(() => {})
+          .then(async () => {
+            const { isSyncing } = get().syncStatus;
+            if (!isSyncing) {
+              set((s) => ({
+                syncStatus: {
+                  ...s.syncStatus,
+                  isSyncing: true,
+                  currentSyncType: type,
+                  lastError: undefined,
+                },
+              }));
+            }
+
+            try {
+              const result = await task();
+              return result;
+            } finally {
+              set((s) => {
+                const newSize = s.syncStatus.queueSize - 1;
+                return {
+                  syncStatus: {
+                    ...s.syncStatus,
+                    queueSize: newSize,
+                    isSyncing: newSize > 0 ? s.syncStatus.isSyncing : false,
+                    currentSyncType:
+                      newSize > 0 ? s.syncStatus.currentSyncType : null,
+                  },
+                };
+              });
+            }
+          });
+
+        set({ syncQueue: nextTask });
+
+        return nextTask as Promise<T>;
+      },
+
+      setSyncing: (isSyncing: boolean, type: 'push' | 'pull' | 'full' | null) => {
         set((state) => ({
-          syncStatus: { ...state.syncStatus, isSyncing },
+          syncStatus: {
+            ...state.syncStatus,
+            isSyncing,
+            currentSyncType: type,
+          },
         }));
       },
 
-      setLastSync: (direction: 'push' | 'pull' | 'full', serverTime: number) => {
+      setLastSync: (
+        direction: 'push' | 'pull' | 'full',
+        serverTime: number,
+        stats: Partial<SyncStats>,
+        message: string
+      ) => {
         set((state) => ({
           syncStatus: {
             ...state.syncStatus,
             lastSyncAt: serverTime,
             lastSyncDirection: direction,
+            lastSyncSuccess: true,
+            lastSyncMessage: message,
+            lastSyncStats: {
+              ...state.syncStatus.lastSyncStats,
+              ...stats,
+            },
             lastError: undefined,
           },
         }));
@@ -125,13 +237,24 @@ export const useAuthStore = create<AuthState>()(
 
       setSyncError: (error: string | undefined) => {
         set((state) => ({
-          syncStatus: { ...state.syncStatus, lastError: error },
+          syncStatus: {
+            ...state.syncStatus,
+            lastError: error,
+            lastSyncSuccess: false,
+            lastSyncMessage: error || '',
+          },
         }));
       },
 
       setPendingChanges: (count: number) => {
         set((state) => ({
           syncStatus: { ...state.syncStatus, pendingChanges: count },
+        }));
+      },
+
+      setJustLoggedIn: (value: boolean) => {
+        set((state) => ({
+          syncStatus: { ...state.syncStatus, justLoggedIn: value },
         }));
       },
 
@@ -148,13 +271,20 @@ export const useAuthStore = create<AuthState>()(
         syncStatus: {
           ...state.syncStatus,
           isSyncing: false,
+          currentSyncType: null,
+          queueSize: 0,
+          justLoggedIn: false,
         },
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
           state.syncStatus.isSyncing = false;
+          state.syncStatus.currentSyncType = null;
+          state.syncStatus.queueSize = 0;
+          state.syncStatus.justLoggedIn = false;
           state.isLoading = false;
           state.error = null;
+          state.syncQueue = Promise.resolve();
         }
       },
     }

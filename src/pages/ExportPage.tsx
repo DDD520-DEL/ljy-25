@@ -196,8 +196,10 @@ export function ExportPage() {
     const result = await forceFullSync();
     if (result.success) {
       const parts: string[] = [];
-      if (result.pushedRecords) parts.push(`上传 ${result.pushedRecords} 项`);
-      if (result.pulledRecords) parts.push(`拉取 ${result.pulledRecords} 项`);
+      const pushed = result.stats.recordsPushed + result.stats.dogsPushed;
+      const pulled = result.stats.recordsPulled + result.stats.dogsPulled;
+      if (pushed > 0) parts.push(`上传 ${pushed} 项`);
+      if (pulled > 0) parts.push(`拉取 ${pulled} 项`);
       setFullSyncMessage(
         parts.length > 0 ? `✓ 全量同步完成：${parts.join('，')}` : '✓ 全量同步完成'
       );

@@ -2,25 +2,35 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useBarkStore } from '@/store/useBarkStore';
 import * as syncService from '@/services/syncService';
+import { SyncStats } from '@/types';
 
 export interface SyncResult {
   success: boolean;
-  message?: string;
-  pushedRecords?: number;
-  pulledRecords?: number;
-  mergedRecords?: number;
-  mergedDogs?: number;
-  deletedLocal?: number;
+  message: string;
+  stats: SyncStats;
+  serverTime?: number;
 }
+
+const emptyStats: SyncStats = {
+  recordsPushed: 0,
+  dogsPushed: 0,
+  recordsPulled: 0,
+  dogsPulled: 0,
+  recordsMerged: 0,
+  dogsMerged: 0,
+  deletedLocal: 0,
+};
 
 export function useSync() {
   const user = useAuthStore((s) => s.user);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const lastSyncAt = useAuthStore((s) => s.syncStatus.lastSyncAt);
-  const setSyncing = useAuthStore((s) => s.setSyncing);
+  const justLoggedIn = useAuthStore((s) => s.syncStatus.justLoggedIn);
+  const enqueueSync = useAuthStore((s) => s.enqueueSync);
   const setLastSync = useAuthStore((s) => s.setLastSync);
   const setSyncError = useAuthStore((s) => s.setSyncError);
   const setPendingChanges = useAuthStore((s) => s.setPendingChanges);
+  const setJustLoggedIn = useAuthStore((s) => s.setJustLoggedIn);
   const logout = useAuthStore((s) => s.logout);
 
   const getPendingSyncData = useBarkStore((s) => s.getPendingSyncData);
@@ -31,7 +41,7 @@ export function useSync() {
   const records = useBarkStore((s) => s.records);
   const dogs = useBarkStore((s) => s.dogs);
 
-  const syncLockRef = useRef(false);
+  const hasInitRef = useRef(false);
 
   const updatePendingCount = useCallback(() => {
     const pending = getPendingSyncData();
@@ -62,7 +72,10 @@ export function useSync() {
     [logout, setSyncError]
   );
 
-  const pushLocalChanges = useCallback(async (): Promise<{ serverTime: number }> => {
+  const pushLocalChanges = useCallback(async (): Promise<{
+    serverTime: number;
+    stats: SyncStats;
+  }> => {
     if (!user?.token || !user.id) {
       throw new Error('未登录');
     }
@@ -78,10 +91,20 @@ export function useSync() {
     });
 
     markAllSynced();
-    return { serverTime: result.serverTime };
+
+    const stats: SyncStats = {
+      ...emptyStats,
+      recordsPushed: pending.records.length,
+      dogsPushed: pending.dogs.length,
+    };
+
+    return { serverTime: result.serverTime, stats };
   }, [user, lastSyncAt, getPendingSyncData, markAllSynced]);
 
-  const pullRemoteChanges = useCallback(async (): Promise<SyncResult> => {
+  const pullRemoteChanges = useCallback(async (): Promise<{
+    serverTime: number;
+    stats: SyncStats;
+  }> => {
     if (!user?.token || !user.id) {
       throw new Error('未登录');
     }
@@ -95,192 +118,240 @@ export function useSync() {
       response.deletedDogIds
     );
 
-    setLastSync('pull', response.serverTime);
-
-    return {
-      success: true,
-      pulledRecords: response.records.length + response.dogs.length,
-      mergedRecords: mergeResult.mergedRecords,
-      mergedDogs: mergeResult.mergedDogs,
+    const stats: SyncStats = {
+      ...emptyStats,
+      recordsPulled: response.records.length,
+      dogsPulled: response.dogs.length,
+      recordsMerged: mergeResult.mergedRecords,
+      dogsMerged: mergeResult.mergedDogs,
       deletedLocal: mergeResult.deletedLocal,
     };
-  }, [user, lastSyncAt, mergeRemoteChanges, setLastSync]);
 
-  const syncIncremental = useCallback(async (): Promise<SyncResult> => {
-    if (!isAuthenticated || !user) {
-      return { success: false, message: '未登录' };
-    }
-
-    if (syncLockRef.current) {
-      return { success: false, message: '同步进行中' };
-    }
-
-    syncLockRef.current = true;
-    setSyncing(true);
-    setSyncError(undefined);
-
-    try {
-      const pushResult = await pushLocalChanges();
-      setLastSync('push', pushResult.serverTime);
-
-      const pending = getPendingSyncData();
-      const pushedCount =
-        pending.records.length +
-        pending.dogs.length +
-        pending.deletedRecordIds.length +
-        pending.deletedDogIds.length;
-
-      const pullResult = await pullRemoteChanges();
-
-      setLastSync('push', Math.max(pushResult.serverTime, pullResult.mergedRecords || 0 > 0 ? Date.now() : pushResult.serverTime));
-
-      updatePendingCount();
-
-      return {
-        success: true,
-        pushedRecords: pushedCount,
-        ...pullResult,
-      };
-    } catch (error) {
-      const err = error as Error;
-      const isAuthErr = await handleAuthError(err);
-      if (!isAuthErr) {
-        setSyncError(err.message || '同步失败');
-      }
-      return {
-        success: false,
-        message: err.message || '同步失败',
-      };
-    } finally {
-      setSyncing(false);
-      syncLockRef.current = false;
-    }
-  }, [isAuthenticated, user, pushLocalChanges, pullRemoteChanges, getPendingSyncData, setSyncing, setSyncError, setLastSync, updatePendingCount, handleAuthError]);
+    return { serverTime: response.serverTime, stats };
+  }, [user, lastSyncAt, mergeRemoteChanges]);
 
   const pushOnLogin = useCallback(async (): Promise<SyncResult> => {
     if (!isAuthenticated || !user) {
-      return { success: false, message: '未登录' };
+      return { success: false, message: '未登录', stats: emptyStats };
     }
 
-    if (syncLockRef.current) {
-      return { success: false, message: '同步进行中' };
-    }
+    return enqueueSync(async () => {
+      try {
+        const { serverTime, stats } = await pushLocalChanges();
+        const totalPushed = stats.recordsPushed + stats.dogsPushed;
+        const message =
+          totalPushed > 0
+            ? `成功上传 ${stats.recordsPushed} 条记录、${stats.dogsPushed} 只狗狗档案`
+            : '本地数据已是最新，无需上传';
 
-    syncLockRef.current = true;
-    setSyncing(true);
-    setSyncError(undefined);
+        setLastSync('push', serverTime, stats, message);
+        updatePendingCount();
+        setJustLoggedIn(false);
 
-    try {
-      const pushResult = await pushLocalChanges();
-      setLastSync('push', pushResult.serverTime);
-      updatePendingCount();
-
-      return {
-        success: true,
-        message: '本地数据已上传至云端',
-      };
-    } catch (error) {
-      const err = error as Error;
-      const isAuthErr = await handleAuthError(err);
-      if (!isAuthErr) {
-        setSyncError(err.message || '上传失败');
+        return { success: true, message, stats, serverTime };
+      } catch (error) {
+        const err = error as Error;
+        const isAuthErr = await handleAuthError(err);
+        if (!isAuthErr) {
+          setSyncError(err.message || '上传失败');
+        }
+        return {
+          success: false,
+          message: err.message || '上传失败',
+          stats: emptyStats,
+        };
       }
-      return {
-        success: false,
-        message: err.message || '上传失败',
-      };
-    } finally {
-      setSyncing(false);
-      syncLockRef.current = false;
-    }
-  }, [isAuthenticated, user, pushLocalChanges, setSyncing, setSyncError, setLastSync, updatePendingCount, handleAuthError]);
+    }, 'push');
+  }, [
+    isAuthenticated,
+    user,
+    enqueueSync,
+    pushLocalChanges,
+    setLastSync,
+    updatePendingCount,
+    setJustLoggedIn,
+    handleAuthError,
+    setSyncError,
+  ]);
 
   const pullOnStartup = useCallback(async (): Promise<SyncResult> => {
     if (!isAuthenticated || !user) {
-      return { success: false, message: '未登录' };
+      return { success: false, message: '未登录', stats: emptyStats };
     }
 
-    if (syncLockRef.current) {
-      return { success: false, message: '同步进行中' };
-    }
+    return enqueueSync(async () => {
+      try {
+        const { serverTime, stats } = await pullRemoteChanges();
+        const totalChanged =
+          stats.recordsMerged + stats.dogsMerged + stats.deletedLocal;
+        const message =
+          totalChanged > 0
+            ? `同步完成：新增/更新 ${stats.recordsMerged + stats.dogsMerged} 项，清理 ${stats.deletedLocal} 项`
+            : '数据已是最新';
 
-    syncLockRef.current = true;
-    setSyncing(true);
-    setSyncError(undefined);
+        setLastSync('pull', serverTime, stats, message);
+        updatePendingCount();
 
-    try {
-      const result = await pullRemoteChanges();
-      updatePendingCount();
-      return {
-        ...result,
-        message: '已从云端同步最新数据',
-      };
-    } catch (error) {
-      const err = error as Error;
-      const isAuthErr = await handleAuthError(err);
-      if (!isAuthErr) {
-        setSyncError(err.message || '拉取失败');
+        return { success: true, message, stats, serverTime };
+      } catch (error) {
+        const err = error as Error;
+        const isAuthErr = await handleAuthError(err);
+        if (!isAuthErr) {
+          setSyncError(err.message || '拉取失败');
+        }
+        return {
+          success: false,
+          message: err.message || '拉取失败',
+          stats: emptyStats,
+        };
       }
-      return {
-        success: false,
-        message: err.message || '拉取失败',
-      };
-    } finally {
-      setSyncing(false);
-      syncLockRef.current = false;
+    }, 'pull');
+  }, [
+    isAuthenticated,
+    user,
+    enqueueSync,
+    pullRemoteChanges,
+    setLastSync,
+    updatePendingCount,
+    handleAuthError,
+    setSyncError,
+  ]);
+
+  const syncIncremental = useCallback(async (): Promise<SyncResult> => {
+    if (!isAuthenticated || !user) {
+      return { success: false, message: '未登录', stats: emptyStats };
     }
-  }, [isAuthenticated, user, pullRemoteChanges, setSyncing, setSyncError, updatePendingCount, handleAuthError]);
+
+    return enqueueSync(async () => {
+      try {
+        const pushResult = await pushLocalChanges();
+        const pullResult = await pullRemoteChanges();
+
+        const combinedStats: SyncStats = {
+          recordsPushed: pushResult.stats.recordsPushed,
+          dogsPushed: pushResult.stats.dogsPushed,
+          recordsPulled: pullResult.stats.recordsPulled,
+          dogsPulled: pullResult.stats.dogsPulled,
+          recordsMerged: pullResult.stats.recordsMerged,
+          dogsMerged: pullResult.stats.dogsMerged,
+          deletedLocal: pullResult.stats.deletedLocal,
+        };
+
+        const serverTime = Math.max(pushResult.serverTime, pullResult.serverTime);
+        const totalPushed = combinedStats.recordsPushed + combinedStats.dogsPushed;
+        const totalMerged =
+          combinedStats.recordsMerged + combinedStats.dogsMerged;
+
+        const parts: string[] = [];
+        if (totalPushed > 0) parts.push(`上传 ${totalPushed} 项`);
+        if (totalMerged > 0) parts.push(`合并 ${totalMerged} 项`);
+        if (combinedStats.deletedLocal > 0)
+          parts.push(`清理 ${combinedStats.deletedLocal} 项`);
+
+        const message =
+          parts.length > 0 ? `同步完成：${parts.join('，')}` : '数据已是最新';
+
+        setLastSync('pull', serverTime, combinedStats, message);
+        updatePendingCount();
+
+        return { success: true, message, stats: combinedStats, serverTime };
+      } catch (error) {
+        const err = error as Error;
+        const isAuthErr = await handleAuthError(err);
+        if (!isAuthErr) {
+          setSyncError(err.message || '同步失败');
+        }
+        return {
+          success: false,
+          message: err.message || '同步失败',
+          stats: emptyStats,
+        };
+      }
+    }, 'pull');
+  }, [
+    isAuthenticated,
+    user,
+    enqueueSync,
+    pushLocalChanges,
+    pullRemoteChanges,
+    setLastSync,
+    updatePendingCount,
+    handleAuthError,
+    setSyncError,
+  ]);
 
   const forceFullSync = useCallback(async (): Promise<SyncResult> => {
     if (!isAuthenticated || !user) {
-      return { success: false, message: '未登录' };
+      return { success: false, message: '未登录', stats: emptyStats };
     }
 
-    if (syncLockRef.current) {
-      return { success: false, message: '同步进行中' };
-    }
+    return enqueueSync(async () => {
+      try {
+        const pushRes = await syncService.pushFull(
+          user.token,
+          user.id,
+          records,
+          dogs,
+          settings
+        );
 
-    syncLockRef.current = true;
-    setSyncing(true);
-    setSyncError(undefined);
+        const pullRes = await syncService.pullAll(user.token, user.id);
 
-    try {
-      const pushRes = await syncService.pushFull(
-        user.token,
-        user.id,
-        records,
-        dogs,
-        settings
-      );
+        replaceAllData(pullRes.records, pullRes.dogs, pullRes.settings);
 
-      const pullRes = await syncService.pullAll(user.token, user.id);
+        const stats: SyncStats = {
+          recordsPushed: records.length,
+          dogsPushed: dogs.length,
+          recordsPulled: pullRes.records.length,
+          dogsPulled: pullRes.dogs.length,
+          recordsMerged: pullRes.records.length,
+          dogsMerged: pullRes.dogs.length,
+          deletedLocal: 0,
+        };
 
-      replaceAllData(pullRes.records, pullRes.dogs, pullRes.settings);
+        const serverTime = Math.max(pushRes.serverTime, pullRes.serverTime);
+        const message = `全量同步完成：上传 ${records.length} 条记录、${dogs.length} 只狗狗；拉取 ${pullRes.records.length} 条记录、${pullRes.dogs.length} 只狗狗`;
 
-      setLastSync('full', Math.max(pushRes.serverTime, pullRes.serverTime));
-      updatePendingCount();
+        setLastSync('full', serverTime, stats, message);
+        updatePendingCount();
 
-      return {
-        success: true,
-        message: '全量同步完成',
-        pushedRecords: records.length + dogs.length,
-        pulledRecords: pullRes.records.length + pullRes.dogs.length,
-      };
-    } catch (error) {
-      const err = error as Error;
-      const isAuthErr = await handleAuthError(err);
-      if (!isAuthErr) {
-        setSyncError(err.message || '全量同步失败');
+        return { success: true, message, stats, serverTime };
+      } catch (error) {
+        const err = error as Error;
+        const isAuthErr = await handleAuthError(err);
+        if (!isAuthErr) {
+          setSyncError(err.message || '全量同步失败');
+        }
+        return {
+          success: false,
+          message: err.message || '全量同步失败',
+          stats: emptyStats,
+        };
       }
-      return {
-        success: false,
-        message: err.message || '全量同步失败',
-      };
-    } finally {
-      setSyncing(false);
-      syncLockRef.current = false;
+    }, 'full');
+  }, [
+    isAuthenticated,
+    user,
+    records,
+    dogs,
+    settings,
+    enqueueSync,
+    replaceAllData,
+    setLastSync,
+    updatePendingCount,
+    handleAuthError,
+    setSyncError,
+  ]);
+
+  useEffect(() => {
+    if (justLoggedIn && isAuthenticated && !hasInitRef.current) {
+      hasInitRef.current = true;
+      pushOnLogin();
     }
-  }, [isAuthenticated, user, records, dogs, settings, replaceAllData, setSyncing, setSyncError, setLastSync, updatePendingCount, handleAuthError]);
+    if (!justLoggedIn) {
+      hasInitRef.current = false;
+    }
+  }, [justLoggedIn, isAuthenticated, pushOnLogin]);
 
   return {
     syncIncremental,

@@ -8,12 +8,28 @@ export interface User {
   lastLoginAt: number;
 }
 
+export interface SyncStats {
+  recordsPushed: number;
+  dogsPushed: number;
+  recordsPulled: number;
+  dogsPulled: number;
+  recordsMerged: number;
+  dogsMerged: number;
+  deletedLocal: number;
+}
+
 export interface SyncStatus {
   lastSyncAt: number;
   lastSyncDirection: 'push' | 'pull' | 'full' | null;
+  lastSyncSuccess: boolean;
+  lastSyncMessage: string;
   pendingChanges: number;
   isSyncing: boolean;
+  currentSyncType: 'push' | 'pull' | 'full' | null;
   lastError?: string;
+  lastSyncStats: SyncStats;
+  queueSize: number;
+  justLoggedIn: boolean;
 }
 
 export interface SyncRecord<T> {

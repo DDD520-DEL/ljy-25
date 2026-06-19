@@ -15,21 +15,22 @@ function AppInitializer() {
   useReminders();
   const { pullOnStartup } = useSync();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const justLoggedIn = useAuthStore((s) => s.syncStatus.justLoggedIn);
   const validateSession = useAuthStore((s) => s.validateSession);
   const hasSyncedRef = useRef(false);
 
   useEffect(() => {
     const init = async () => {
-      if (isAuthenticated) {
+      if (isAuthenticated && !justLoggedIn && !hasSyncedRef.current) {
         const valid = await validateSession();
-        if (valid && !hasSyncedRef.current) {
+        if (valid) {
           hasSyncedRef.current = true;
           await pullOnStartup();
         }
       }
     };
     init();
-  }, [isAuthenticated, validateSession, pullOnStartup]);
+  }, [isAuthenticated, justLoggedIn, validateSession, pullOnStartup]);
 
   return null;
 }

@@ -62,7 +62,7 @@ export function SettingsPage() {
   const logout = useAuthStore((s) => s.logout);
   const clearAuthError = useAuthStore((s) => s.clearError);
 
-  const { pushOnLogin, syncIncremental } = useSync();
+  const { syncIncremental } = useSync();
 
   const [showAddTime, setShowAddTime] = useState(false);
   const [newHour, setNewHour] = useState(9);
@@ -77,7 +77,6 @@ export function SettingsPage() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [formError, setFormError] = useState('');
-  const [syncMessage, setSyncMessage] = useState('');
 
   useEffect(() => {
     if (authError) {
@@ -149,9 +148,6 @@ export function SettingsPage() {
     try {
       await login(username.trim(), password);
       resetForm();
-      setTimeout(() => {
-        pushOnLogin();
-      }, 300);
     } catch {
       // error handled in store
     }
@@ -185,25 +181,10 @@ export function SettingsPage() {
 
   const handleLogout = async () => {
     await logout();
-    setSyncMessage('');
   };
 
   const handleSyncNow = async () => {
-    setSyncMessage('');
-    const result = await syncIncremental();
-    if (result.success) {
-      const parts: string[] = [];
-      if (result.pushedRecords) parts.push(`上传 ${result.pushedRecords} 项`);
-      if (result.mergedRecords || result.mergedDogs) {
-        parts.push(`合并 ${(result.mergedRecords || 0) + (result.mergedDogs || 0)} 项`);
-      }
-      if (result.deletedLocal) parts.push(`清理 ${result.deletedLocal} 项`);
-      setSyncMessage(parts.length > 0 ? `✓ ${parts.join('，')}` : '✓ 数据已是最新');
-      setTimeout(() => setSyncMessage(''), 3000);
-    } else {
-      setSyncMessage(result.message || '同步失败');
-      setTimeout(() => setSyncMessage(''), 4000);
-    }
+    await syncIncremental();
   };
 
   const renderAuthSection = () => {
@@ -241,7 +222,9 @@ export function SettingsPage() {
                   ? 'bg-coral-50 border border-coral-200'
                   : syncStatus.isSyncing
                   ? 'bg-blue-50 border border-blue-200'
-                  : 'bg-mint-50 border border-mint-200'
+                  : syncStatus.lastSyncSuccess && syncStatus.lastSyncAt > 0
+                  ? 'bg-mint-50 border border-mint-200'
+                  : 'bg-gray-50 border border-gray-200'
               }`}
             >
               <div className="flex items-center gap-3 mb-3">
@@ -251,15 +234,19 @@ export function SettingsPage() {
                       ? 'bg-coral-100'
                       : syncStatus.isSyncing
                       ? 'bg-blue-100'
-                      : 'bg-mint-100'
+                      : syncStatus.lastSyncSuccess && syncStatus.lastSyncAt > 0
+                      ? 'bg-mint-100'
+                      : 'bg-gray-100'
                   }`}
                 >
                   {syncStatus.isSyncing ? (
                     <Loader2 className="text-blue-600 animate-spin" size={20} />
                   ) : syncStatus.lastError ? (
                     <CloudOff className="text-coral-600" size={20} />
+                  ) : syncStatus.lastSyncSuccess && syncStatus.lastSyncAt > 0 ? (
+                    <Check className="text-mint-600" size={20} />
                   ) : (
-                    <Cloud className="text-mint-600" size={20} />
+                    <Cloud className="text-gray-500" size={20} />
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -269,14 +256,24 @@ export function SettingsPage() {
                         ? 'text-coral-800'
                         : syncStatus.isSyncing
                         ? 'text-blue-800'
-                        : 'text-mint-800'
+                        : syncStatus.lastSyncSuccess && syncStatus.lastSyncAt > 0
+                        ? 'text-mint-800'
+                        : 'text-gray-700'
                     }`}
                   >
                     {syncStatus.isSyncing
-                      ? '正在同步数据...'
+                      ? syncStatus.currentSyncType === 'push'
+                        ? '正在上传本地数据...'
+                        : syncStatus.currentSyncType === 'pull'
+                        ? '正在拉取云端数据...'
+                        : syncStatus.currentSyncType === 'full'
+                        ? '正在全量同步...'
+                        : '正在同步数据...'
                       : syncStatus.lastError
                       ? '同步遇到问题'
-                      : '云端同步已开启'}
+                      : syncStatus.lastSyncSuccess && syncStatus.lastSyncAt > 0
+                      ? '云端同步正常'
+                      : '尚未同步过数据'}
                   </div>
                   <div
                     className={`text-xs ${
@@ -284,17 +281,40 @@ export function SettingsPage() {
                         ? 'text-coral-600'
                         : syncStatus.isSyncing
                         ? 'text-blue-600'
-                        : 'text-mint-600'
+                        : syncStatus.lastSyncSuccess && syncStatus.lastSyncAt > 0
+                        ? 'text-mint-600'
+                        : 'text-gray-500'
                     }`}
                   >
                     {syncStatus.isSyncing
-                      ? '请稍候'
+                      ? syncStatus.queueSize > 1
+                        ? `队列中还有 ${syncStatus.queueSize - 1} 个任务`
+                        : '请稍候'
                       : syncStatus.lastError
                       ? syncStatus.lastError
-                      : `上次同步：${formatDateTime(syncStatus.lastSyncAt)}`}
+                      : syncStatus.lastSyncAt > 0
+                      ? `上次同步：${formatDateTime(syncStatus.lastSyncAt)}`
+                      : '登录后自动开始同步'}
                   </div>
                 </div>
               </div>
+
+              {syncStatus.lastSyncMessage &&
+                syncStatus.lastSyncAt > 0 &&
+                !syncStatus.isSyncing && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className={`text-sm mb-3 p-2.5 rounded-lg ${
+                      syncStatus.lastSyncSuccess
+                        ? 'bg-mint-100 text-mint-800'
+                        : 'bg-coral-100 text-coral-800'
+                    }`}
+                  >
+                    {syncStatus.lastSyncSuccess ? '✓ ' : '✗ '}
+                    {syncStatus.lastSyncMessage}
+                  </motion.div>
+                )}
 
               <div className="flex flex-wrap gap-2 mb-3">
                 {syncStatus.pendingChanges > 0 && (
@@ -303,29 +323,62 @@ export function SettingsPage() {
                     {syncStatus.pendingChanges} 项待上传
                   </span>
                 )}
-                {syncStatus.lastSyncDirection && (
+                {syncStatus.lastSyncDirection && syncStatus.lastSyncAt > 0 && (
                   <span className="inline-flex items-center px-2.5 py-1 bg-gray-100 text-gray-600 text-xs rounded-full">
                     {syncStatus.lastSyncDirection === 'push' && '上次：上传'}
                     {syncStatus.lastSyncDirection === 'pull' && '上次：拉取'}
                     {syncStatus.lastSyncDirection === 'full' && '上次：全量'}
                   </span>
                 )}
+                {syncStatus.queueSize > 0 && syncStatus.isSyncing && (
+                  <span className="inline-flex items-center px-2.5 py-1 bg-blue-100 text-blue-600 text-xs rounded-full">
+                    队列 {syncStatus.queueSize}
+                  </span>
+                )}
               </div>
 
-              {syncMessage && (
-                <div
-                  className={`text-sm mb-3 ${
-                    syncMessage.startsWith('✓') ? 'text-mint-700' : 'text-coral-600'
-                  }`}
-                >
-                  {syncMessage}
-                </div>
-              )}
+              {syncStatus.lastSyncAt > 0 &&
+                (syncStatus.lastSyncStats.recordsPushed > 0 ||
+                  syncStatus.lastSyncStats.dogsPushed > 0 ||
+                  syncStatus.lastSyncStats.recordsMerged > 0 ||
+                  syncStatus.lastSyncStats.dogsMerged > 0 ||
+                  syncStatus.lastSyncStats.deletedLocal > 0) && (
+                  <div className="grid grid-cols-3 gap-2 mb-3 p-3 bg-white/60 rounded-xl">
+                    {(syncStatus.lastSyncStats.recordsPushed > 0 ||
+                      syncStatus.lastSyncStats.dogsPushed > 0) && (
+                      <div className="text-center">
+                        <div className="text-lg font-bold text-indigo-600">
+                          {syncStatus.lastSyncStats.recordsPushed +
+                            syncStatus.lastSyncStats.dogsPushed}
+                        </div>
+                        <div className="text-xs text-gray-500">上传</div>
+                      </div>
+                    )}
+                    {(syncStatus.lastSyncStats.recordsMerged > 0 ||
+                      syncStatus.lastSyncStats.dogsMerged > 0) && (
+                      <div className="text-center">
+                        <div className="text-lg font-bold text-blue-600">
+                          {syncStatus.lastSyncStats.recordsMerged +
+                            syncStatus.lastSyncStats.dogsMerged}
+                        </div>
+                        <div className="text-xs text-gray-500">新增/更新</div>
+                      </div>
+                    )}
+                    {syncStatus.lastSyncStats.deletedLocal > 0 && (
+                      <div className="text-center">
+                        <div className="text-lg font-bold text-coral-600">
+                          {syncStatus.lastSyncStats.deletedLocal}
+                        </div>
+                        <div className="text-xs text-gray-500">清理</div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
               <button
                 onClick={handleSyncNow}
                 disabled={syncStatus.isSyncing}
-                className="w-full py-2.5 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-xl text-sm font-medium hover:from-indigo-600 hover:to-purple-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                className="w-full py-2.5 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-xl text-sm font-medium hover:from-indigo-600 hover:to-purple-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50 active:scale-[0.98]"
               >
                 {syncStatus.isSyncing ? (
                   <>
@@ -342,8 +395,8 @@ export function SettingsPage() {
             </div>
 
             <div className="text-xs text-gray-400 space-y-1">
-              <p>• 登录后数据自动同步至云端</p>
-              <p>• 多设备使用同一账号可共享数据</p>
+              <p>• 登录后自动上传本地记录至云端</p>
+              <p>• 每次打开应用自动拉取云端增量数据</p>
               <p>• 同步冲突以时间戳较新的数据为准</p>
             </div>
           </div>
