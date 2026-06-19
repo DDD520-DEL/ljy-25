@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   BarChart3,
@@ -5,6 +6,7 @@ import {
   Clock,
   TrendingUp,
   AlertTriangle,
+  Dog,
 } from 'lucide-react';
 import { HourlyChart } from '@/components/HourlyChart';
 import { WeeklyHeatmap } from '@/components/WeeklyHeatmap';
@@ -15,8 +17,10 @@ import { getTimePeriod } from '@/types';
 import { formatFriendlyDate } from '@/utils/date';
 
 export function AnalysisPage() {
+  const [selectedDogId, setSelectedDogId] = useState<string | undefined>(undefined);
   const {
     hasData,
+    dogs,
     chartData,
     heatmapData,
     maxHourlyCount,
@@ -25,7 +29,8 @@ export function AnalysisPage() {
     peakHourInfo,
     peakDayInfo,
     tagRecordDistribution,
-  } = useStats();
+    dogStats,
+  } = useStats(selectedDogId);
 
   if (!hasData) {
     return (
@@ -78,6 +83,132 @@ export function AnalysisPage() {
           </p>
         </motion.div>
 
+        {dogs.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="mb-6"
+          >
+            <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
+              <button
+                onClick={() => setSelectedDogId(undefined)}
+                className={`px-4 py-2 text-sm rounded-full border whitespace-nowrap transition-all ${
+                  selectedDogId === undefined
+                    ? 'bg-amber-500 text-white border-amber-500'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-amber-300'
+                }`}
+              >
+                全部
+              </button>
+              {dogs.map((dog) => (
+                <button
+                  key={dog.id}
+                  onClick={() => setSelectedDogId(dog.id)}
+                  className={`px-4 py-2 text-sm rounded-full border whitespace-nowrap transition-all flex items-center gap-1 ${
+                    selectedDogId === dog.id
+                      ? 'bg-amber-500 text-white border-amber-500'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-amber-300'
+                  }`}
+                >
+                  <Dog size={14} />
+                  {dog.name}
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
+        {dogs.length > 1 && selectedDogId === undefined && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+            className="mb-6 bg-white rounded-2xl p-5 shadow-soft"
+          >
+            <h3 className="font-display text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+              <Dog size={20} className="text-amber-600" />
+              狗狗叫唤对比
+            </h3>
+            <div className="space-y-4">
+              {dogStats.map((ds, index) => (
+                <motion.div
+                  key={ds.dog.id}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.2 + index * 0.1 }}
+                  className="flex items-center gap-3"
+                >
+                  <div className="w-20 text-sm font-medium text-gray-700 flex-shrink-0 flex items-center gap-1">
+                    <Dog size={14} className="text-amber-500" />
+                    {ds.dog.name}
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-6 bg-amber-50 rounded-full overflow-hidden">
+                        <motion.div
+                          className="h-full bg-gradient-to-r from-amber-400 to-amber-600 rounded-full"
+                          initial={{ width: 0 }}
+                          animate={{
+                            width: `${
+                              summaryStats.totalRecords > 0
+                                ? (ds.recordCount / summaryStats.totalRecords) * 100
+                                : 0
+                            }%`,
+                          }}
+                          transition={{ delay: 0.3 + index * 0.1, duration: 0.5 }}
+                        />
+                      </div>
+                      <div className="w-12 text-right text-sm font-medium text-amber-700">
+                        {ds.recordCount} 次
+                      </div>
+                    </div>
+                    {ds.peakHour >= 0 && ds.peakHourLabel && (
+                      <div className="text-xs text-gray-400">
+                        最频繁：{ds.peakHourLabel}
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              ))}
+              {(() => {
+                const unassigned = summaryStats.totalRecords - dogStats.reduce((s, d) => s + d.recordCount, 0);
+                if (unassigned > 0) {
+                  return (
+                    <div className="flex items-center gap-3">
+                      <div className="w-20 text-sm font-medium text-gray-400 flex-shrink-0">
+                        未指定
+                      </div>
+                      <div className="flex-1 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-6 bg-gray-50 rounded-full overflow-hidden">
+                            <motion.div
+                              className="h-full bg-gradient-to-r from-gray-300 to-gray-400 rounded-full"
+                              initial={{ width: 0 }}
+                              animate={{
+                                width: `${
+                                  summaryStats.totalRecords > 0
+                                    ? (unassigned / summaryStats.totalRecords) * 100
+                                    : 0
+                                }%`,
+                              }}
+                              transition={{ delay: 0.3 + dogStats.length * 0.1, duration: 0.5 }}
+                            />
+                          </div>
+                          <div className="w-12 text-right text-sm font-medium text-gray-500">
+                            {unassigned} 次
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+            </div>
+          </motion.div>
+        )}
+
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -89,6 +220,11 @@ export function AnalysisPage() {
             <div>
               <h3 className="font-display text-lg font-bold mb-1">
                 分析摘要
+                {selectedDogId && dogs.find((d) => d.id === selectedDogId) && (
+                  <span className="text-white/80 text-base font-normal ml-2">
+                    — {dogs.find((d) => d.id === selectedDogId)!.name}
+                  </span>
+                )}
               </h3>
               <p className="text-white/90 text-sm">
                 共记录 {summaryStats.totalRecords} 次，

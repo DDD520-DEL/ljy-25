@@ -1,10 +1,11 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { BarkRecord, AppSettings, ReminderTime } from '@/types';
+import { BarkRecord, AppSettings, ReminderTime, DogProfile } from '@/types';
 import { generateId } from '@/utils/storage';
 
 interface BarkState {
   records: BarkRecord[];
+  dogs: DogProfile[];
   settings: AppSettings;
   addRecord: (timestamp?: number, data?: Partial<BarkRecord>) => BarkRecord;
   updateRecord: (id: string, data: Partial<BarkRecord>) => void;
@@ -20,6 +21,9 @@ interface BarkState {
   removeReminderTime: (id: string) => void;
   toggleReminders: (enabled: boolean) => void;
   markReminderTriggered: (reminderId: string, dateStr: string) => void;
+  addDog: (data: Omit<DogProfile, 'id' | 'createdAt' | 'updatedAt'>) => DogProfile;
+  updateDog: (id: string, data: Partial<Omit<DogProfile, 'id' | 'createdAt' | 'updatedAt'>>) => void;
+  deleteDog: (id: string) => void;
 }
 
 const initialSettings: AppSettings = {
@@ -40,6 +44,7 @@ export const useBarkStore = create<BarkState>()(
   persist(
     (set) => ({
       records: [],
+      dogs: [],
       settings: initialSettings,
 
       addRecord: (timestamp?: number, data?: Partial<BarkRecord>) => {
@@ -202,15 +207,50 @@ export const useBarkStore = create<BarkState>()(
           },
         }));
       },
+
+      addDog: (data: Omit<DogProfile, 'id' | 'createdAt' | 'updatedAt'>) => {
+        const now = Date.now();
+        const newDog: DogProfile = {
+          id: generateId(),
+          ...data,
+          createdAt: now,
+          updatedAt: now,
+        };
+        set((state) => ({
+          dogs: [...state.dogs, newDog],
+        }));
+        return newDog;
+      },
+
+      updateDog: (id: string, data: Partial<Omit<DogProfile, 'id' | 'createdAt' | 'updatedAt'>>) => {
+        set((state) => ({
+          dogs: state.dogs.map((dog) =>
+            dog.id === id ? { ...dog, ...data, updatedAt: Date.now() } : dog
+          ),
+        }));
+      },
+
+      deleteDog: (id: string) => {
+        set((state) => ({
+          dogs: state.dogs.filter((dog) => dog.id !== id),
+          records: state.records.map((record) =>
+            record.dogId === id ? { ...record, dogId: undefined } : record
+          ),
+        }));
+      },
     }),
     {
       name: 'bark-recorder-storage',
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         records: state.records,
+        dogs: state.dogs,
         settings: state.settings,
       }),
       onRehydrateStorage: () => (state) => {
+        if (state && !state.dogs) {
+          state.dogs = [];
+        }
         if (state && !state.settings.reminders) {
           state.settings.reminders = initialSettings.reminders;
         }

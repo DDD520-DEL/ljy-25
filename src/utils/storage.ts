@@ -1,4 +1,4 @@
-import { BarkRecord } from '@/types';
+import { BarkRecord, DogProfile } from '@/types';
 
 export function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -8,11 +8,17 @@ export function exportRecordsAsJSON(records: BarkRecord[]): string {
   return JSON.stringify(records, null, 2);
 }
 
-export function exportRecordsAsText(records: BarkRecord[]): string {
+export function exportRecordsAsText(records: BarkRecord[], dogs?: DogProfile[]): string {
   if (records.length === 0) {
     return '暂无记录';
   }
   
+  const getDogName = (dogId?: string) => {
+    if (!dogId || !dogs) return '';
+    const dog = dogs.find(d => d.id === dogId);
+    return dog ? dog.name : '';
+  };
+
   const lines: string[] = [];
   lines.push('狗叫记录报告');
   lines.push('='.repeat(40));
@@ -20,6 +26,20 @@ export function exportRecordsAsText(records: BarkRecord[]): string {
   const recordsWithAudio = records.filter(r => r.audioData).length;
   if (recordsWithAudio > 0) {
     lines.push(`含录音记录：${recordsWithAudio} 条`);
+  }
+  
+  if (dogs && dogs.length > 0) {
+    lines.push('');
+    lines.push('狗狗统计：');
+    lines.push('-'.repeat(40));
+    dogs.forEach(dog => {
+      const dogRecords = records.filter(r => r.dogId === dog.id);
+      lines.push(`  ${dog.name}${dog.breed ? ` (${dog.breed})` : ''}: ${dogRecords.length} 次`);
+    });
+    const unassigned = records.filter(r => !r.dogId);
+    if (unassigned.length > 0) {
+      lines.push(`  未指定狗狗: ${unassigned.length} 次`);
+    }
   }
   
   const tagCounts = new Map<string, number>();
@@ -49,6 +69,8 @@ export function exportRecordsAsText(records: BarkRecord[]): string {
     const date = new Date(record.timestamp);
     const timeStr = date.toLocaleString('zh-CN');
     let line = `${index + 1}. ${timeStr}`;
+    const dogName = getDogName(record.dogId);
+    if (dogName) line += ` | 狗狗：${dogName}`;
     if (record.location) line += ` | 位置：${record.location}`;
     if (record.dogDescription) line += ` | 特征：${record.dogDescription}`;
     if (record.note) line += ` | 备注：${record.note}`;
@@ -57,41 +79,79 @@ export function exportRecordsAsText(records: BarkRecord[]): string {
     lines.push(line);
   });
   
-  lines.push('');
-  lines.push('='.repeat(40));
-  lines.push('按标签分组：');
-  lines.push('-'.repeat(40));
-  
-  const untaggedRecords = sorted.filter(r => !r.tags || r.tags.length === 0);
-  const taggedRecords = sorted.filter(r => r.tags && r.tags.length > 0);
-  
-  const allTags = Array.from(tagCounts.keys()).sort();
-  
-  allTags.forEach(tag => {
-    const tagRecords = taggedRecords.filter(r => r.tags?.includes(tag));
+  if (dogs && dogs.length > 0) {
     lines.push('');
-    lines.push(`【${tag}】(${tagRecords.length} 次)`);
-    tagRecords.forEach((record) => {
-      const date = new Date(record.timestamp);
-      const timeStr = date.toLocaleString('zh-CN');
-      let line = `  - ${timeStr}`;
-      if (record.location) line += ` | ${record.location}`;
-      if (record.note) line += ` | ${record.note}`;
-      lines.push(line);
+    lines.push('='.repeat(40));
+    lines.push('按狗狗分组：');
+    lines.push('-'.repeat(40));
+    
+    dogs.forEach(dog => {
+      const dogRecords = sorted.filter(r => r.dogId === dog.id);
+      lines.push('');
+      lines.push(`【${dog.name}】(${dogRecords.length} 次)`);
+      if (dog.breed) lines.push(`  品种：${dog.breed}`);
+      if (dog.age) lines.push(`  年龄：${dog.age}`);
+      if (dog.description) lines.push(`  描述：${dog.description}`);
+      dogRecords.forEach((record) => {
+        const date = new Date(record.timestamp);
+        const timeStr = date.toLocaleString('zh-CN');
+        let line = `  - ${timeStr}`;
+        if (record.location) line += ` | ${record.location}`;
+        if (record.note) line += ` | ${record.note}`;
+        lines.push(line);
+      });
     });
-  });
-  
-  if (untaggedRecords.length > 0) {
+    
+    const unassigned = sorted.filter(r => !r.dogId);
+    if (unassigned.length > 0) {
+      lines.push('');
+      lines.push(`【未指定狗狗】(${unassigned.length} 次)`);
+      unassigned.forEach((record) => {
+        const date = new Date(record.timestamp);
+        const timeStr = date.toLocaleString('zh-CN');
+        let line = `  - ${timeStr}`;
+        if (record.location) line += ` | ${record.location}`;
+        if (record.note) line += ` | ${record.note}`;
+        lines.push(line);
+      });
+    }
+  } else {
     lines.push('');
-    lines.push(`【未打标】(${untaggedRecords.length} 次)`);
-    untaggedRecords.forEach((record) => {
-      const date = new Date(record.timestamp);
-      const timeStr = date.toLocaleString('zh-CN');
-      let line = `  - ${timeStr}`;
-      if (record.location) line += ` | ${record.location}`;
-      if (record.note) line += ` | ${record.note}`;
-      lines.push(line);
+    lines.push('='.repeat(40));
+    lines.push('按标签分组：');
+    lines.push('-'.repeat(40));
+    
+    const untaggedRecords = sorted.filter(r => !r.tags || r.tags.length === 0);
+    const taggedRecords = sorted.filter(r => r.tags && r.tags.length > 0);
+    
+    const allTags = Array.from(tagCounts.keys()).sort();
+    
+    allTags.forEach(tag => {
+      const tagRecords = taggedRecords.filter(r => r.tags?.includes(tag));
+      lines.push('');
+      lines.push(`【${tag}】(${tagRecords.length} 次)`);
+      tagRecords.forEach((record) => {
+        const date = new Date(record.timestamp);
+        const timeStr = date.toLocaleString('zh-CN');
+        let line = `  - ${timeStr}`;
+        if (record.location) line += ` | ${record.location}`;
+        if (record.note) line += ` | ${record.note}`;
+        lines.push(line);
+      });
     });
+    
+    if (untaggedRecords.length > 0) {
+      lines.push('');
+      lines.push(`【未打标】(${untaggedRecords.length} 次)`);
+      untaggedRecords.forEach((record) => {
+        const date = new Date(record.timestamp);
+        const timeStr = date.toLocaleString('zh-CN');
+        let line = `  - ${timeStr}`;
+        if (record.location) line += ` | ${record.location}`;
+        if (record.note) line += ` | ${record.note}`;
+        lines.push(line);
+      });
+    }
   }
   
   return lines.join('\n');
@@ -165,14 +225,15 @@ export interface ExportBundle {
 
 export async function prepareExportBundle(
   records: BarkRecord[],
-  formats: ('text' | 'json')[] = ['text', 'json']
+  formats: ('text' | 'json')[] = ['text', 'json'],
+  dogs?: DogProfile[]
 ): Promise<ExportBundle> {
   const bundle: ExportBundle = {
     audioFiles: [],
   };
 
   if (formats.includes('text')) {
-    bundle.textReport = await createTextFileBlob(exportRecordsAsText(records), 'text/plain;charset=utf-8');
+    bundle.textReport = await createTextFileBlob(exportRecordsAsText(records, dogs), 'text/plain;charset=utf-8');
   }
   if (formats.includes('json')) {
     bundle.jsonReport = await createTextFileBlob(exportRecordsAsJSON(records), 'application/json;charset=utf-8');

@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useBarkRecords } from '@/hooks/useBarkRecords';
 import { useStats } from '@/hooks/useStats';
+import { useBarkStore } from '@/store/useBarkStore';
 import {
   exportRecordsAsText,
   exportRecordsAsJSON,
@@ -28,6 +29,7 @@ export function ExportPage() {
   const { records } = useBarkRecords();
   const { summaryStats, peakHourInfo, peakDayInfo, chartData, maxHourlyCount } =
     useStats();
+  const dogs = useBarkStore((s) => s.dogs);
   const [copied, setCopied] = useState(false);
   const [exportFormat, setExportFormat] = useState<'text' | 'json'>('text');
   const [includeAudio, setIncludeAudio] = useState(true);
@@ -39,8 +41,8 @@ export function ExportPage() {
   const hasAudio = audioFiles.length > 0;
 
   const textReport = useMemo(() => {
-    return exportRecordsAsText(records);
-  }, [records]);
+    return exportRecordsAsText(records, dogs);
+  }, [records, dogs]);
 
   const jsonReport = useMemo(() => {
     return exportRecordsAsJSON(records);
@@ -79,7 +81,7 @@ export function ExportPage() {
 
     try {
       const formats: ('text' | 'json')[] = [exportFormat];
-      const bundle = await prepareExportBundle(records, formats);
+      const bundle = await prepareExportBundle(records, formats, dogs);
 
       const allFiles: { fileName: string; blob: Blob }[] = [];
       const datePrefix = getDatePrefix();
@@ -142,7 +144,7 @@ export function ExportPage() {
     setDownloadProgress(0);
 
     try {
-      const bundle = await prepareExportBundle(records, []);
+      const bundle = await prepareExportBundle(records, [], dogs);
       const allFiles: { fileName: string; blob: Blob }[] = [...bundle.audioFiles];
       if (bundle.readme) {
         allFiles.push({
@@ -170,6 +172,82 @@ export function ExportPage() {
       }, 3000);
     } catch (error) {
       setDownloadMessage('下载失败，请重试');
+      setTimeout(() => {
+        setIsDownloading(false);
+        setDownloadProgress(0);
+        setDownloadMessage('');
+      }, 3000);
+    }
+  };
+
+  const handleDownloadByDog = async () => {
+    if (isDownloading || dogs.length === 0) return;
+    setIsDownloading(true);
+    setDownloadProgress(0);
+    setDownloadMessage('正在按狗狗拆分数据...');
+
+    try {
+      const datePrefix = getDatePrefix();
+      const allFiles: { fileName: string; blob: Blob }[] = [];
+
+      dogs.forEach((dog) => {
+        const dogRecords = records.filter((r) => r.dogId === dog.id);
+        if (dogRecords.length === 0) return;
+        const safeName = dog.name.replace(/[\\/:*?"<>|]/g, '_').substring(0, 20);
+        if (exportFormat === 'text') {
+          const content = exportRecordsAsText(dogRecords, dogs);
+          allFiles.push({
+            fileName: `狗叫记录_${safeName}_${datePrefix}.txt`,
+            blob: new Blob([content], { type: 'text/plain;charset=utf-8' }),
+          });
+        } else {
+          const content = exportRecordsAsJSON(dogRecords);
+          allFiles.push({
+            fileName: `狗叫记录_${safeName}_${datePrefix}.json`,
+            blob: new Blob([content], { type: 'application/json;charset=utf-8' }),
+          });
+        }
+      });
+
+      const unassigned = records.filter((r) => !r.dogId);
+      if (unassigned.length > 0) {
+        if (exportFormat === 'text') {
+          const content = exportRecordsAsText(unassigned, dogs);
+          allFiles.push({
+            fileName: `狗叫记录_未指定_${datePrefix}.txt`,
+            blob: new Blob([content], { type: 'text/plain;charset=utf-8' }),
+          });
+        } else {
+          const content = exportRecordsAsJSON(unassigned);
+          allFiles.push({
+            fileName: `狗叫记录_未指定_${datePrefix}.json`,
+            blob: new Blob([content], { type: 'application/json;charset=utf-8' }),
+          });
+        }
+      }
+
+      const totalFiles = allFiles.length;
+      setDownloadMessage(`共 ${totalFiles} 个文件，开始下载...`);
+
+      for (let i = 0; i < allFiles.length; i++) {
+        const file = allFiles[i];
+        setDownloadProgress(Math.round(((i + 1) / totalFiles) * 100));
+        setDownloadMessage(`正在下载 (${i + 1}/${totalFiles})：${file.fileName}`);
+        await downloadBlob(file.blob, file.fileName);
+        if (i < allFiles.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 300));
+        }
+      }
+
+      setDownloadMessage(`✓ 按狗狗拆分导出完成！共 ${totalFiles} 个文件`);
+      setTimeout(() => {
+        setIsDownloading(false);
+        setDownloadProgress(0);
+        setDownloadMessage('');
+      }, 3000);
+    } catch (error) {
+      console.error('Export by dog error:', error);
+      setDownloadMessage('导出失败，请重试');
       setTimeout(() => {
         setIsDownloading(false);
         setDownloadProgress(0);
@@ -518,6 +596,17 @@ export function ExportPage() {
             >
               <Music size={18} />
               仅下载录音文件 ({audioFiles.length})
+            </button>
+          )}
+
+          {dogs.length > 0 && (
+            <button
+              onClick={handleDownloadByDog}
+              disabled={isDownloading}
+              className="w-full py-3 px-6 border-2 border-amber-200 text-amber-600 rounded-xl font-medium hover:bg-amber-50 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              <Download size={18} />
+              按狗狗拆分导出 ({dogs.length} 只)
             </button>
           )}
         </motion.div>

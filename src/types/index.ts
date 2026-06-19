@@ -1,6 +1,17 @@
+export interface DogProfile {
+  id: string;
+  name: string;
+  breed: string;
+  age: string;
+  description: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface BarkRecord {
   id: string;
   timestamp: number;
+  dogId?: string;
   location?: string;
   dogDescription?: string;
   duration?: number;

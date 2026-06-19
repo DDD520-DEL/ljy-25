@@ -1,12 +1,15 @@
+import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Activity, Clock, TrendingUp, BellRing, BellOff } from 'lucide-react';
+import { Activity, Clock, TrendingUp, BellRing, BellOff, Dog } from 'lucide-react';
 import { BarkButton } from '@/components/BarkButton';
 import { StatsCard } from '@/components/StatsCard';
 import { DogMood } from '@/components/DogMood';
+import { DogProfileManager } from '@/components/DogProfileManager';
 import { RecordItem } from '@/components/RecordItem';
 import { useBarkRecords } from '@/hooks/useBarkRecords';
 import { useStats } from '@/hooks/useStats';
 import { useReminders } from '@/hooks/useReminders';
+import { useBarkStore } from '@/store/useBarkStore';
 import { getDogMood } from '@/types';
 import { formatFriendlyDateTime } from '@/utils/date';
 import { Link } from 'react-router-dom';
@@ -23,11 +26,19 @@ export function HomePage() {
 
   const { peakHourInfo, summaryStats } = useStats();
   const { reminders, getTodayReminderStatus, formatReminderTime } = useReminders();
+  const dogs = useBarkStore((s) => s.dogs);
+
+  const [selectedDogId, setSelectedDogId] = useState<string | undefined>(undefined);
+  const [showDogManager, setShowDogManager] = useState(false);
 
   const dogMood = getDogMood(todayCount);
 
   const recentRecords = todayRecords.slice(0, 5);
   const reminderStatus = getTodayReminderStatus();
+
+  const handleQuickRecord = (audioData?: { data: string; mimeType: string; duration: number }) => {
+    quickRecord(audioData, selectedDogId);
+  };
 
   const renderReminderCard = () => {
     if (!reminders.enabled) {
@@ -118,8 +129,88 @@ export function HomePage() {
           <DogMood mood={dogMood} size="md" />
         </motion.div>
 
-        <div className="flex justify-center mb-8">
-          <BarkButton onClick={quickRecord} />
+        <div className="flex justify-center mb-2">
+          <BarkButton onClick={handleQuickRecord} />
+        </div>
+
+        {dogs.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.25 }}
+            className="mb-8"
+          >
+            <div className="flex items-center justify-center gap-2 flex-wrap">
+              <span className="text-sm text-gray-500 flex items-center gap-1">
+                <Dog size={14} />
+                选择狗狗：
+              </span>
+              <button
+                onClick={() => setSelectedDogId(undefined)}
+                className={`px-3 py-1 text-sm rounded-full border transition-all ${
+                  selectedDogId === undefined
+                    ? 'bg-amber-500 text-white border-amber-500'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-amber-300'
+                }`}
+              >
+                未指定
+              </button>
+              {dogs.map((dog) => (
+                <button
+                  key={dog.id}
+                  onClick={() => setSelectedDogId(dog.id)}
+                  className={`px-3 py-1 text-sm rounded-full border transition-all ${
+                    selectedDogId === dog.id
+                      ? 'bg-amber-500 text-white border-amber-500'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-amber-300'
+                  }`}
+                >
+                  {dog.name}
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
+        <div className="mb-6">
+          <button
+            onClick={() => setShowDogManager((prev) => !prev)}
+            className="w-full flex items-center justify-between p-4 bg-white rounded-2xl shadow-soft hover:bg-gray-50 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
+                <Dog className="text-amber-600" size={20} />
+              </div>
+              <div>
+                <div className="font-medium text-gray-800">狗狗档案管理</div>
+                <div className="text-xs text-gray-500">
+                  {dogs.length > 0
+                    ? `已创建 ${dogs.length} 只狗狗档案`
+                    : '创建狗狗档案，记录时选择是哪只狗'}
+                </div>
+              </div>
+            </div>
+            <motion.div
+              animate={{ rotate: showDogManager ? 180 : 0 }}
+              transition={{ duration: 0.2 }}
+              className="text-gray-400"
+            >
+              ▼
+            </motion.div>
+          </button>
+          <motion.div
+            initial={false}
+            animate={{
+              height: showDogManager ? 'auto' : 0,
+              opacity: showDogManager ? 1 : 0,
+            }}
+            transition={{ duration: 0.3 }}
+            className="overflow-hidden"
+          >
+            <div className="mt-3">
+              <DogProfileManager />
+            </div>
+          </motion.div>
         </div>
 
         <div className="grid grid-cols-1 gap-3 mb-6">

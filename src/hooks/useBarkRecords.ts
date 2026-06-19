@@ -40,12 +40,15 @@ export function useBarkRecords() {
     return record;
   }, [addRecord, settings.vibrationEnabled]);
 
-  const handleQuickRecord = useCallback((audio?: AudioData) => {
+  const handleQuickRecord = useCallback((audio?: AudioData, dogId?: string) => {
     const data: Partial<BarkRecord> = {};
     if (audio) {
       data.audioData = audio.data;
       data.audioMimeType = audio.mimeType;
       data.audioDuration = audio.duration;
+    }
+    if (dogId) {
+      data.dogId = dogId;
     }
     return handleAddRecord(undefined, data);
   }, [handleAddRecord]);

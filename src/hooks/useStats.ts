@@ -10,16 +10,23 @@ import {
   getMaxHourlyCount,
   getMaxWeeklyCount,
 } from '@/utils/statistics';
-import { WEEKDAY_SHORT, formatHour, getTimePeriod } from '@/types';
+import { WEEKDAY_SHORT, formatHour, getTimePeriod, DogProfile } from '@/types';
 
-export function useStats() {
+export function useStats(dogId?: string) {
   const records = useBarkStore((state) => state.records);
+  const dogs = useBarkStore((state) => state.dogs);
 
-  const hourlyStats = useMemo(() => calculateHourlyStats(records), [records]);
+  const filteredRecords = useMemo(() => {
+    if (dogId === undefined) return records;
+    if (dogId === '__all__') return records;
+    return records.filter((r) => r.dogId === dogId);
+  }, [records, dogId]);
+
+  const hourlyStats = useMemo(() => calculateHourlyStats(filteredRecords), [filteredRecords]);
   
-  const weeklyStats = useMemo(() => calculateWeeklyStats(records), [records]);
+  const weeklyStats = useMemo(() => calculateWeeklyStats(filteredRecords), [filteredRecords]);
   
-  const summaryStats = useMemo(() => calculateSummaryStats(records), [records]);
+  const summaryStats = useMemo(() => calculateSummaryStats(filteredRecords), [filteredRecords]);
   
   const maxHourlyCount = useMemo(() => getMaxHourlyCount(hourlyStats), [hourlyStats]);
   
@@ -64,19 +71,43 @@ export function useStats() {
     }));
   }, [weeklyStats, maxWeeklyCount]);
 
-  const tagStats = useMemo(() => calculateTagStats(records), [records]);
+  const tagStats = useMemo(() => calculateTagStats(filteredRecords), [filteredRecords]);
   
   const tagRecordDistribution = useMemo(
-    () => calculateTagRecordDistribution(records),
-    [records]
+    () => calculateTagRecordDistribution(filteredRecords),
+    [filteredRecords]
   );
   
-  const allTags = useMemo(() => getAllTags(records), [records]);
+  const allTags = useMemo(() => getAllTags(filteredRecords), [filteredRecords]);
 
-  const hasData = useMemo(() => records.length > 0, [records]);
+  const hasData = useMemo(() => filteredRecords.length > 0, [filteredRecords]);
+
+  const dogStats = useMemo(() => {
+    return dogs.map((dog) => {
+      const dogRecords = records.filter((r) => r.dogId === dog.id);
+      const stats = calculateSummaryStats(dogRecords);
+      const hourly = calculateHourlyStats(dogRecords);
+      const maxH = getMaxHourlyCount(hourly);
+      const peakHour = hourly.reduce(
+        (max, curr) => (curr.count > max.count ? curr : max),
+        hourly[0]
+      ).hour;
+      return {
+        dog,
+        recordCount: dogRecords.length,
+        summaryStats: stats,
+        hourlyStats: hourly,
+        maxHourlyCount: maxH,
+        peakHour,
+        peakHourLabel: peakHour >= 0 ? formatHour(peakHour) : '',
+      };
+    });
+  }, [dogs, records]);
 
   return {
     records,
+    filteredRecords,
+    dogs,
     hourlyStats,
     weeklyStats,
     summaryStats,
@@ -90,5 +121,6 @@ export function useStats() {
     tagRecordDistribution,
     allTags,
     hasData,
+    dogStats,
   };
 }

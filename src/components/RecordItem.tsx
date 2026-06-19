@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Clock, Trash2, Edit2, MapPin, Dog, StickyNote, X, Check, MoreVertical, Volume2, VolumeX, Tag } from 'lucide-react';
-import { BarkRecord } from '@/types';
+import { BarkRecord, DogProfile } from '@/types';
 import { formatFriendlyDateTime } from '@/utils/date';
 import { AudioPlayer } from '@/components/AudioPlayer';
 import { TagSelector } from '@/components/TagSelector';
+import { useBarkStore } from '@/store/useBarkStore';
 
 interface RecordItemProps {
   record: BarkRecord;
@@ -13,6 +14,9 @@ interface RecordItemProps {
 }
 
 export function RecordItem({ record, onDelete, onUpdate }: RecordItemProps) {
+  const dogs = useBarkStore((s) => s.dogs);
+  const dogName = record.dogId ? dogs.find((d) => d.id === record.dogId)?.name : undefined;
+
   const [isEditing, setIsEditing] = useState(false);
   const [showActions, setShowActions] = useState(false);
   const [showAudioPlayer, setShowAudioPlayer] = useState(false);
@@ -89,6 +93,12 @@ export function RecordItem({ record, onDelete, onUpdate }: RecordItemProps) {
             <div className="font-medium text-gray-800">
               {formatFriendlyDateTime(record.timestamp)}
             </div>
+            {dogName && (
+              <span className="px-2 py-0.5 text-xs bg-amber-100 text-amber-700 rounded-full border border-amber-200 flex items-center gap-1">
+                <Dog size={10} />
+                {dogName}
+              </span>
+            )}
             {hasAudio && !isEditing && (
               <motion.button
                 whileTap={{ scale: 0.9 }}
