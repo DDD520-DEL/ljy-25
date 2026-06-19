@@ -9,8 +9,10 @@ import {
   getAllTags,
   getMaxHourlyCount,
   getMaxWeeklyCount,
+  filterRecordsByDateRange,
 } from '@/utils/statistics';
 import { WEEKDAY_SHORT, formatHour, getTimePeriod } from '@/types';
+import { getDateRangeForPreset } from '@/utils/date';
 
 export function useStats(dogId?: string) {
   const records = useBarkStore((state) => state.records);
@@ -109,6 +111,31 @@ export function useStats(dogId?: string) {
     });
   }, [dogs, records]);
 
+  const weekComparison = useMemo(() => {
+    const thisWeekRange = getDateRangeForPreset('thisWeek');
+    const lastWeekRange = getDateRangeForPreset('lastWeek');
+
+    const thisWeekRecords = filterRecordsByDateRange(filteredRecords, thisWeekRange);
+    const lastWeekRecords = filterRecordsByDateRange(filteredRecords, lastWeekRange);
+
+    const thisWeekCount = thisWeekRecords.length;
+    const lastWeekCount = lastWeekRecords.length;
+
+    const diff = thisWeekCount - lastWeekCount;
+    const percentChange = lastWeekCount > 0
+      ? ((thisWeekCount - lastWeekCount) / lastWeekCount) * 100
+      : thisWeekCount > 0 ? 100 : 0;
+
+    return {
+      thisWeekCount,
+      lastWeekCount,
+      diff,
+      percentChange,
+      thisWeekLabel: thisWeekRange.label,
+      lastWeekLabel: lastWeekRange.label,
+    };
+  }, [filteredRecords]);
+
   return {
     records,
     filteredRecords,
@@ -127,5 +154,6 @@ export function useStats(dogId?: string) {
     allTags,
     hasData,
     dogStats,
+    weekComparison,
   };
 }

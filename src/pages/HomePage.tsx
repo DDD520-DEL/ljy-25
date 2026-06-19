@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Activity, Clock, TrendingUp, BellRing, BellOff, Dog, MapPin, Check, AlertCircle } from 'lucide-react';
 import { BarkButton } from '@/components/BarkButton';
 import { StatsCard } from '@/components/StatsCard';
+import { WeeklyComparisonCard } from '@/components/WeeklyComparisonCard';
 import { DogMood } from '@/components/DogMood';
 import { DogProfileManager } from '@/components/DogProfileManager';
 import { RecordItem } from '@/components/RecordItem';
@@ -28,7 +29,7 @@ export function HomePage() {
     addRecord,
   } = useBarkRecords();
 
-  const { peakHourInfo, summaryStats } = useStats();
+  const { peakHourInfo, summaryStats, weekComparison } = useStats();
   const { reminders, getTodayReminderStatus, formatReminderTime } = useReminders();
   const dogs = useBarkStore((s) => s.dogs);
   const markDailyPopupShown = useBarkStore((s) => s.markDailyPopupShown);
@@ -379,6 +380,15 @@ export function HomePage() {
             }
             color="coral"
             delay={0.5}
+          />
+
+          <WeeklyComparisonCard
+            thisWeekCount={weekComparison.thisWeekCount}
+            lastWeekCount={weekComparison.lastWeekCount}
+            percentChange={weekComparison.percentChange}
+            thisWeekLabel={weekComparison.thisWeekLabel}
+            lastWeekLabel={weekComparison.lastWeekLabel}
+            delay={0.55}
           />
         </div>
 
