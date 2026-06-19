@@ -131,7 +131,6 @@ export const useBarkStore = create<BarkState>()(
       },
 
       getAllTags: () => {
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const state = useBarkStore.getState();
         const tagSet = new Set<string>();
         state.records.forEach((record) => {

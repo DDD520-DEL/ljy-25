@@ -107,7 +107,7 @@ export function TagPieChart({ data, totalRecords }: TagPieChartProps) {
     [data]
   );
 
-  const CustomTooltip = ({ active, payload }: any) => {
+  const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: { payload: { name: string; value: number; percentage: number } }[] }) => {
     if (active && payload && payload.length) {
       const item = payload[0].payload;
       return (
@@ -175,8 +175,8 @@ export function TagPieChart({ data, totalRecords }: TagPieChartProps) {
             <Legend
               verticalAlign="bottom"
               height={36}
-              formatter={(value, entry: any) => {
-                const item = entry.payload;
+              formatter={(value, entry) => {
+                const item = entry.payload as { value?: number };
                 return (
                   <span className="text-sm text-gray-700">
                     {value} ({item.value}条)

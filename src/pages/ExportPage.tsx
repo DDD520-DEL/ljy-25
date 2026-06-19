@@ -20,7 +20,6 @@ import {
   exportRecordsAsJSON,
   prepareExportBundle,
   downloadBlob,
-  downloadMultipleFiles,
   extractAudioFiles,
 } from '@/utils/storage';
 import { WEEKDAYS } from '@/types';
@@ -170,7 +169,7 @@ export function ExportPage() {
         setDownloadProgress(0);
         setDownloadMessage('');
       }, 3000);
-    } catch (error) {
+    } catch {
       setDownloadMessage('下载失败，请重试');
       setTimeout(() => {
         setIsDownloading(false);
@@ -245,8 +244,8 @@ export function ExportPage() {
         setDownloadProgress(0);
         setDownloadMessage('');
       }, 3000);
-    } catch (error) {
-      console.error('Export by dog error:', error);
+    } catch (_error) {
+      console.error('Export by dog error:', _error);
       setDownloadMessage('导出失败，请重试');
       setTimeout(() => {
         setIsDownloading(false);
@@ -402,7 +401,7 @@ export function ExportPage() {
           <div className="border-t border-gray-100 pt-4 mt-4">
             <h3 className="font-medium text-gray-800 mb-3">24小时分布</h3>
             <div className="flex items-end h-24 gap-0.5">
-              {chartData.map((item, index) => {
+              {chartData.map((item) => {
                 const height =
                   maxHourlyCount > 0 ? (item.count / maxHourlyCount) * 100 : 0;
                 return (

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Clock, Trash2, Edit2, MapPin, Dog, StickyNote, X, Check, MoreVertical, Volume2, VolumeX, Tag } from 'lucide-react';
-import { BarkRecord, DogProfile } from '@/types';
+import { BarkRecord } from '@/types';
 import { formatFriendlyDateTime } from '@/utils/date';
 import { AudioPlayer } from '@/components/AudioPlayer';
 import { TagSelector } from '@/components/TagSelector';

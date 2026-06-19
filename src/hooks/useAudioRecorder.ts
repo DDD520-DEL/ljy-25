@@ -49,7 +49,7 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}): UseAudi
         if (mediaRecorderRef.current.state !== 'inactive') {
           mediaRecorderRef.current.stop();
         }
-      } catch (e) {
+      } catch {
         // ignore
       }
       mediaRecorderRef.current = null;
@@ -99,7 +99,7 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}): UseAudi
             resolve(null);
           };
           reader.readAsDataURL(audioBlob);
-        } catch (e) {
+        } catch {
           setError('音频处理出错');
           setIsRecording(false);
           cleanup();
@@ -109,7 +109,7 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}): UseAudi
 
       try {
         recorder.stop();
-      } catch (e) {
+      } catch {
         setIsRecording(false);
         cleanup();
         resolve(null);
@@ -181,14 +181,15 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}): UseAudi
           stopRecordingRef.current();
         }
       }, 100);
-    } catch (err: any) {
+    } catch (err: unknown) {
       cleanup();
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+      const errorObj = err as { name?: string; message?: string };
+      if (errorObj.name === 'NotAllowedError' || errorObj.name === 'PermissionDeniedError') {
         setError('请允许麦克风权限以进行录音');
-      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+      } else if (errorObj.name === 'NotFoundError' || errorObj.name === 'DevicesNotFoundError') {
         setError('未找到可用的麦克风设备');
       } else {
-        setError(`录音启动失败：${err.message || '未知错误'}`);
+        setError(`录音启动失败：${errorObj.message || '未知错误'}`);
       }
       setIsRecording(false);
     }

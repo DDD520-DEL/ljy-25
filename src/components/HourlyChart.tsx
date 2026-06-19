@@ -33,7 +33,7 @@ export function HourlyChart({ data, maxCount }: HourlyChartProps) {
     }));
   }, [data]);
 
-  const CustomTooltip = ({ active, payload }: any) => {
+  const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: { payload: { hour: number; count: number } }[] }) => {
     if (active && payload && payload.length) {
       const { hour, count } = payload[0].payload;
       return (

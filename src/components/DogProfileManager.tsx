@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Trash2, Edit2, Dog, X, Check } from 'lucide-react';
+import { Plus, Trash2, Edit2, Dog, Check } from 'lucide-react';
 import { useBarkStore } from '@/store/useBarkStore';
 import { DogProfile } from '@/types';
 

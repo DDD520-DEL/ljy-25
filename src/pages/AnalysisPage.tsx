@@ -163,9 +163,15 @@ export function AnalysisPage() {
                         {ds.recordCount} 次
                       </div>
                     </div>
-                    {ds.peakHour >= 0 && ds.peakHourLabel && (
-                      <div className="text-xs text-gray-400">
-                        最频繁：{ds.peakHourLabel}
+                    {ds.recordCount > 0 ? (
+                      ds.peakHour >= 0 && ds.peakHourLabel && (
+                        <div className="text-xs text-gray-400">
+                          最频繁：{ds.peakHourLabel}
+                        </div>
+                      )
+                    ) : (
+                      <div className="text-xs text-gray-300">
+                        暂无记录
                       </div>
                     )}
                   </div>

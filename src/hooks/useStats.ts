@@ -10,7 +10,7 @@ import {
   getMaxHourlyCount,
   getMaxWeeklyCount,
 } from '@/utils/statistics';
-import { WEEKDAY_SHORT, formatHour, getTimePeriod, DogProfile } from '@/types';
+import { WEEKDAY_SHORT, formatHour, getTimePeriod } from '@/types';
 
 export function useStats(dogId?: string) {
   const records = useBarkStore((state) => state.records);
@@ -88,10 +88,15 @@ export function useStats(dogId?: string) {
       const stats = calculateSummaryStats(dogRecords);
       const hourly = calculateHourlyStats(dogRecords);
       const maxH = getMaxHourlyCount(hourly);
-      const peakHour = hourly.reduce(
-        (max, curr) => (curr.count > max.count ? curr : max),
-        hourly[0]
-      ).hour;
+      let peakHour = -1;
+      let peakHourLabel = '';
+      if (dogRecords.length > 0) {
+        peakHour = hourly.reduce(
+          (max, curr) => (curr.count > max.count ? curr : max),
+          hourly[0]
+        ).hour;
+        peakHourLabel = peakHour >= 0 ? formatHour(peakHour) : '';
+      }
       return {
         dog,
         recordCount: dogRecords.length,
@@ -99,7 +104,7 @@ export function useStats(dogId?: string) {
         hourlyStats: hourly,
         maxHourlyCount: maxH,
         peakHour,
-        peakHourLabel: peakHour >= 0 ? formatHour(peakHour) : '',
+        peakHourLabel,
       };
     });
   }, [dogs, records]);

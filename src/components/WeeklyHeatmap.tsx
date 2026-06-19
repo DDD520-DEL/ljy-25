@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { WEEKDAY_SHORT } from '@/types';
-import { formatHour } from '@/types';
 
 interface HeatmapDataPoint {
   day: number;
@@ -17,7 +16,7 @@ interface WeeklyHeatmapProps {
   maxCount: number;
 }
 
-export function WeeklyHeatmap({ data, maxCount }: WeeklyHeatmapProps) {
+export function WeeklyHeatmap({ data }: WeeklyHeatmapProps) {
   const [hoveredCell, setHoveredCell] = useState<HeatmapDataPoint | null>(null);
 
   const getCellColor = (intensity: number, count: number) => {
