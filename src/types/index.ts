@@ -155,6 +155,72 @@ export interface TagStats {
 
 export const PRESET_TAGS = ['快递', '装修', '遛狗路过', '夜间吠叫', '陌生人', '其他狗'] as const;
 
+export interface NoteTemplate {
+  label: string;
+  value: string;
+  emoji?: string;
+  tags?: string[];
+}
+
+export const PRESET_NOTE_TEMPLATES: NoteTemplate[] = [
+  {
+    label: '快递派送',
+    value: '快递员派送快递经过，短暂吠叫',
+    emoji: '📦',
+    tags: ['快递'],
+  },
+  {
+    label: '邻居装修',
+    value: '邻居装修噪音引起吠叫',
+    emoji: '🔨',
+    tags: ['装修'],
+  },
+  {
+    label: '遛狗路过',
+    value: '其他住户遛狗经过门口',
+    emoji: '🐕',
+    tags: ['遛狗路过', '其他狗'],
+  },
+  {
+    label: '陌生人经过',
+    value: '陌生人路过楼下/门口',
+    emoji: '🚶',
+    tags: ['陌生人'],
+  },
+  {
+    label: '夜间吠叫',
+    value: '深夜/凌晨无故吠叫',
+    emoji: '🌙',
+    tags: ['夜间吠叫'],
+  },
+  {
+    label: '门铃/敲门声',
+    value: '门铃响起或有人敲门',
+    emoji: '🔔',
+  },
+  {
+    label: '儿童玩耍',
+    value: '邻居儿童在楼道玩耍',
+    emoji: '👶',
+  },
+  {
+    label: '雷电暴雨',
+    value: '打雷或暴雨导致不安吠叫',
+    emoji: '⛈️',
+  },
+  {
+    label: '救护车/警车',
+    value: '救护车或警车经过',
+    emoji: '🚑',
+  },
+  {
+    label: '其他狗叫',
+    value: '听到其他狗狗叫声引发',
+    emoji: '🐾',
+    tags: ['其他狗'],
+  },
+];
+
 export const PRESET_BREEDS = [
   '中华田园犬',
   '金毛寻回犬',

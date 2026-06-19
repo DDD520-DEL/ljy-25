@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Clock, Trash2, Edit2, MapPin, Dog, StickyNote, X, Check, MoreVertical, Volume2, VolumeX, Tag, ChevronRight } from 'lucide-react';
-import { BarkRecord } from '@/types';
+import { BarkRecord, NoteTemplate } from '@/types';
 import { formatFriendlyDateTime } from '@/utils/date';
 import { AudioPlayer } from '@/components/AudioPlayer';
 import { TagSelector } from '@/components/TagSelector';
+import { NoteTemplateSelector } from '@/components/NoteTemplateSelector';
 import { useBarkStore } from '@/store/useBarkStore';
 import { getTagColorClasses } from '@/lib/utils';
 
@@ -46,6 +47,18 @@ export function RecordItem({ record, onDelete, onUpdate, selectable, selected, o
     setEditTags(record.tags || []);
     setEditAudioRemoved(false);
   }, [record.location, record.dogDescription, record.note, record.tags, record.id]);
+
+  const handleNoteTemplateSelect = (template: NoteTemplate) => {
+    if (editNote.trim()) {
+      setEditNote(editNote + '\n' + template.value);
+    } else {
+      setEditNote(template.value);
+    }
+    if (template.tags && template.tags.length > 0) {
+      const newTags = Array.from(new Set([...editTags, ...template.tags]));
+      setEditTags(newTags);
+    }
+  };
 
   const handleSave = () => {
     const updates: Partial<BarkRecord> = {
@@ -226,6 +239,10 @@ export function RecordItem({ record, onDelete, onUpdate, selectable, selected, o
                   value={editDogDesc}
                   onChange={(e) => setEditDogDesc(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                />
+                <NoteTemplateSelector
+                  onSelect={handleNoteTemplateSelect}
+                  compact
                 />
                 <textarea
                   placeholder="其他备注"

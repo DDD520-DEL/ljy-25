@@ -22,8 +22,9 @@ import { format } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import { AudioPlayer } from '@/components/AudioPlayer';
 import { TagSelector } from '@/components/TagSelector';
+import { NoteTemplateSelector } from '@/components/NoteTemplateSelector';
 import { getTagColorClasses } from '@/lib/utils';
-import { BarkRecord } from '@/types';
+import { BarkRecord, NoteTemplate } from '@/types';
 
 export function RecordDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -58,6 +59,18 @@ export function RecordDetailPage() {
 
   const handleCancel = () => {
     setIsEditing(false);
+  };
+
+  const handleNoteTemplateSelect = (template: NoteTemplate) => {
+    if (editNote.trim()) {
+      setEditNote(editNote + '\n' + template.value);
+    } else {
+      setEditNote(template.value);
+    }
+    if (template.tags && template.tags.length > 0) {
+      const newTags = Array.from(new Set([...editTags, ...template.tags]));
+      setEditTags(newTags);
+    }
   };
 
   const handleSave = () => {
@@ -333,13 +346,18 @@ export function RecordDetailPage() {
               <span className="font-medium text-gray-800">备注</span>
             </div>
             {isEditing ? (
-              <textarea
-                placeholder="输入备注信息..."
-                value={editNote}
-                onChange={(e) => setEditNote(e.target.value)}
-                rows={4}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none"
-              />
+              <div className="space-y-3">
+                <NoteTemplateSelector
+                  onSelect={handleNoteTemplateSelect}
+                />
+                <textarea
+                  placeholder="输入备注信息..."
+                  value={editNote}
+                  onChange={(e) => setEditNote(e.target.value)}
+                  rows={4}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none"
+                />
+              </div>
             ) : record.note ? (
               <div className="text-gray-700 leading-relaxed whitespace-pre-wrap">
                 {record.note}
