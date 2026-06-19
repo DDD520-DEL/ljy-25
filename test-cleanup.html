@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>位置数据清理测试</title>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        max-width: 800px;
+        margin: 40px auto;
+        padding: 20px;
+        background: #f5f5f5;
+      }
+      h1 {
+        color: #333;
+        border-bottom: 2px solid #f59e0b;
+        padding-bottom: 10px;
+      }
+      .test-container {
+        background: white;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      }
+      .result {
+        margin-top: 20px;
+        padding: 15px;
+        background: #f0fdf4;
+        border: 1px solid #86efac;
+        border-radius: 8px;
+      }
+      .result.error {
+        background: #fef2f2;
+        border-color: #fca5a5;
+      }
+      button {
+        padding: 10px 20px;
+        background: #3b82f6;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 14px;
+        margin-right: 10px;
+      }
+      button:hover {
+        background: #2563eb;
+      }
+      button.secondary {
+        background: #6b7280;
+      }
+      button.secondary:hover {
+        background: #4b5563;
+      }
+      pre {
+        background: #1f2937;
+        color: #e5e7eb;
+        padding: 15px;
+        border-radius: 8px;
+        overflow-x: auto;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      .status {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 500;
+        margin-bottom: 10px;
+      }
+      .status.pass {
+        background: #dcfce7;
+        color: #166534;
+      }
+      .status.fail {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>🧪 位置数据清理逻辑测试</h1>
+    
+    <div class="test-container">
+      <h2>测试说明</h2>
+      <p>本测试验证"记录保存 → 定时聚合 → 过期清理"的完整链路，确保超过30天的历史记录能被自动移除。</p>
+      
+      <div style="margin-top: 20px;">
+        <button onclick="runAllTests()">▶️ 运行全部测试</button>
+        <button class="secondary" onclick="clearTestData()">🗑️ 清除测试数据</button>
+      </div>
+      
+      <div id="status" class="status" style="display: none;"></div>
+    </div>
+    
+    <div class="test-container">
+      <h2>测试输出</h2>
+      <pre id="output">点击"运行全部测试"开始...</pre>
+    </div>
+    
+    <div class="test-container">
+      <h2>当前存储状态</h2>
+      <button class="secondary" onclick="checkStorage()">🔍 检查存储</button>
+      <pre id="storage-output">点击"检查存储"查看...</pre>
+    </div>
+
+    <script src="/test-cleanup.js"></script>
+    <script>
+      let originalRunTests = window.runTests;
+      
+      function redirectConsole() {
+        const output = document.getElementById('output');
+        output.textContent = '';
+        
+        const originalLog = console.log;
+        console.log = function(...args) {
+          const message = args.join(' ');
+          output.textContent += message + '\n';
+          output.scrollTop = output.scrollHeight;
+          originalLog.apply(console, args);
+        };
+      }
+      
+      function runAllTests() {
+        redirectConsole();
+        const status = document.getElementById('status');
+        status.style.display = 'inline-block';
+        status.className = 'status';
+        status.textContent = '⏳ 测试进行中...';
+        
+        try {
+          if (typeof originalRunTests === 'function') {
+            originalRunTests();
+          } else {
+            runTests();
+          }
+          
+          setTimeout(() => {
+            const output = document.getElementById('output').textContent;
+            if (output.includes('所有测试通过')) {
+              status.className = 'status pass';
+              status.textContent = '✅ 所有测试通过';
+            } else {
+              status.className = 'status fail';
+              status.textContent = '❌ 部分测试失败';
+            }
+          }, 100);
+        } catch (e) {
+          console.error('测试执行出错:', e);
+          status.className = 'status fail';
+          status.textContent = '❌ 测试执行出错';
+        }
+      }
+      
+      function clearTestData() {
+        const keys = [
+          'bark-heatmap-raw',
+          'bark-heatmap-aggregated',
+          'bark-heatmap-lastAggregation',
+          'bark-heatmap-nextAggregation',
+          'bark-heatmap-lastCleanup',
+          'bark-heatmap-cleanupLog'
+        ];
+        keys.forEach(k => localStorage.removeItem(k));
+        document.getElementById('output').textContent = '已清除所有测试数据';
+        document.getElementById('status').style.display = 'none';
+        checkStorage();
+      }
+      
+      function checkStorage() {
+        const output = document.getElementById('storage-output');
+        const keys = [
+          'bark-heatmap-raw',
+          'bark-heatmap-aggregated',
+          'bark-heatmap-lastAggregation',
+          'bark-heatmap-nextAggregation',
+          'bark-heatmap-lastCleanup',
+          'bark-heatmap-cleanupLog'
+        ];
+        
+        let result = '当前localStorage状态：\n\n';
+        keys.forEach(key => {
+          const value = localStorage.getItem(key);
+          if (value) {
+            try {
+              const parsed = JSON.parse(value);
+              if (Array.isArray(parsed.records)) {
+                result += `${key}:\n  - 记录数: ${parsed.records.length}条\n  - 最后更新: ${parsed.lastUploadedAt ? new Date(parsed.lastUploadedAt).toLocaleString() : '无'}\n\n`;
+              } else if (Array.isArray(parsed)) {
+                result += `${key}:\n  - 日志条目: ${parsed.length}条\n`;
+                parsed.slice().reverse().slice(0, 3).forEach((log, i) => {
+                  result += `    ${i + 1}. [${log.trigger}] -${log.removedCount}条, 剩余${log.afterCount}条 @ ${new Date(log.timestamp).toLocaleString()}\n`;
+                });
+                result += '\n';
+              } else {
+                result += `${key}: ${typeof parsed === 'object' ? JSON.stringify(parsed, null, 2) : parsed}\n\n`;
+              }
+            } catch {
+              result += `${key}: ${value}\n\n`;
+            }
+          } else {
+            result += `${key}: (空)\n\n`;
+          }
+        });
+        
+        output.textContent = result;
+      }
+      
+      checkStorage();
+    </script>
+  </body>
+</html>

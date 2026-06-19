@@ -12,6 +12,10 @@ const AGGREGATED_DATA_KEY = `${HEATMAP_STORAGE_PREFIX}aggregated`;
 const RAW_RECORDS_KEY = `${HEATMAP_STORAGE_PREFIX}raw`;
 const LAST_AGGREGATION_KEY = `${HEATMAP_STORAGE_PREFIX}lastAggregation`;
 const NEXT_AGGREGATION_KEY = `${HEATMAP_STORAGE_PREFIX}nextAggregation`;
+const LAST_CLEANUP_KEY = `${HEATMAP_STORAGE_PREFIX}lastCleanup`;
+const CLEANUP_LOG_KEY = `${HEATMAP_STORAGE_PREFIX}cleanupLog`;
+
+const DATA_RETENTION_DAYS = 30;
 
 const GRID_SIZE = 0.02;
 const DEFAULT_RADIUS = 5000;
@@ -34,6 +38,14 @@ interface AggregatedStorage {
   lastAggregatedAt: number;
   dataDate: string;
   totalRecords: number;
+}
+
+interface CleanupLogEntry {
+  timestamp: number;
+  removedCount: number;
+  beforeCount: number;
+  afterCount: number;
+  trigger: 'startup' | 'aggregation' | 'manual';
 }
 
 function getRawStorage(): RawStorage {
@@ -91,6 +103,31 @@ function setNextAggregationTime(timestamp: number): void {
   localStorage.setItem(NEXT_AGGREGATION_KEY, timestamp.toString());
 }
 
+function getLastCleanupTime(): number {
+  const data = localStorage.getItem(LAST_CLEANUP_KEY);
+  return data ? parseInt(data, 10) : 0;
+}
+
+function setLastCleanupTime(timestamp: number): void {
+  localStorage.setItem(LAST_CLEANUP_KEY, timestamp.toString());
+}
+
+function getCleanupLog(): CleanupLogEntry[] {
+  try {
+    const data = localStorage.getItem(CLEANUP_LOG_KEY);
+    return data ? JSON.parse(data) : [];
+  } catch {
+    return [];
+  }
+}
+
+function addCleanupLog(entry: CleanupLogEntry): void {
+  const log = getCleanupLog();
+  log.push(entry);
+  const recentLog = log.slice(-20);
+  localStorage.setItem(CLEANUP_LOG_KEY, JSON.stringify(recentLog));
+}
+
 function getTomorrowMidnight(): number {
   const now = new Date();
   const tomorrow = new Date(now);
@@ -141,13 +178,10 @@ export async function aggregateHeatmapData(
     return getAggregatedStorage();
   }
 
-  const rawStorage = getRawStorage();
-  const aggregated = getAggregatedStorage();
+  const cleanupResult = clearOldRecords(DATA_RETENTION_DAYS, 'aggregation');
 
-  const cutoffTime = Date.now() - 30 * 24 * 60 * 60 * 1000;
-  const recentRecords = rawStorage.records.filter(
-    (r) => r.timestamp > cutoffTime
-  );
+  const rawStorage = getRawStorage();
+  const recentRecords = rawStorage.records;
 
   const cellMap = new Map<string, AggregatedCell>();
 
@@ -247,9 +281,14 @@ export async function getHeatmapStats(): Promise<{
   lastAggregatedAt: number;
   dataDate: string;
   nextAggregationAt: number;
+  rawRecordCount: number;
+  lastCleanupAt: number;
+  dataRetentionDays: number;
 }> {
   const aggregated = getAggregatedStorage();
   const nextAgg = getNextAggregationTime();
+  const rawStorage = getRawStorage();
+  const lastCleanup = getLastCleanupTime();
 
   return {
     totalCells: aggregated.cells.length,
@@ -257,25 +296,49 @@ export async function getHeatmapStats(): Promise<{
     lastAggregatedAt: aggregated.lastAggregatedAt,
     dataDate: aggregated.dataDate,
     nextAggregationAt: nextAgg || getTomorrowMidnight(),
+    rawRecordCount: rawStorage.records.length,
+    lastCleanupAt: lastCleanup,
+    dataRetentionDays: DATA_RETENTION_DAYS,
   };
 }
 
-export function clearOldRecords(days: number = 30): number {
+export function getCleanupHistory(): CleanupLogEntry[] {
+  return getCleanupLog();
+}
+
+export function clearOldRecords(
+  days: number = DATA_RETENTION_DAYS,
+  trigger: CleanupLogEntry['trigger'] = 'manual'
+): { removed: number; beforeCount: number; afterCount: number } {
   const rawStorage = getRawStorage();
   const cutoffTime = Date.now() - days * 24 * 60 * 60 * 1000;
+  const beforeCount = rawStorage.records.length;
 
-  const originalLength = rawStorage.records.length;
   rawStorage.records = rawStorage.records.filter(
     (r) => r.timestamp > cutoffTime
   );
-  const removed = originalLength - rawStorage.records.length;
+  const afterCount = rawStorage.records.length;
+  const removed = beforeCount - afterCount;
 
-  if (removed > 0) {
+  if (removed > 0 || trigger === 'startup') {
     rawStorage.lastUploadedAt = Date.now();
     setRawStorage(rawStorage);
   }
 
-  return removed;
+  setLastCleanupTime(Date.now());
+  addCleanupLog({
+    timestamp: Date.now(),
+    removedCount: removed,
+    beforeCount,
+    afterCount,
+    trigger,
+  });
+
+  console.log(
+    `[位置数据清理] 触发: ${trigger}, 删除: ${removed} 条, 剩余: ${afterCount} 条`
+  );
+
+  return { removed, beforeCount, afterCount };
 }
 
 export function generateDemoHeatmapData(
@@ -352,6 +415,8 @@ export function startAggregationScheduler(): void {
       await aggregateHeatmapData(false);
     }
   };
+
+  clearOldRecords(DATA_RETENTION_DAYS, 'startup');
 
   checkAndAggregate();
 

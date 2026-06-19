@@ -4,6 +4,27 @@ import { GeoLocation, LocationSharingSettings } from '@/types';
 import * as locationService from '@/services/locationService';
 import * as heatmapService from '@/services/heatmapService';
 
+type CleanupTrigger = 'startup' | 'aggregation' | 'manual';
+
+export interface CleanupLogEntry {
+  timestamp: number;
+  removedCount: number;
+  beforeCount: number;
+  afterCount: number;
+  trigger: CleanupTrigger;
+}
+
+export interface HeatmapStats {
+  totalCells: number;
+  totalRecords: number;
+  lastAggregatedAt: number;
+  dataDate: string;
+  nextAggregationAt: number;
+  rawRecordCount: number;
+  lastCleanupAt: number;
+  dataRetentionDays: number;
+}
+
 export function useLocationSharing() {
   const { settings, updateSettings } = useBarkStore();
   const locationSharing = settings.locationSharing;
@@ -176,6 +197,44 @@ export function useLocationSharing() {
     [isSharingEnabled, currentLocation, locationSharing.precision]
   );
 
+  const getHeatmapStats = useCallback(
+    async (): Promise<HeatmapStats | null> => {
+      try {
+        return await heatmapService.getHeatmapStats();
+      } catch {
+        return null;
+      }
+    },
+    []
+  );
+
+  const getCleanupHistory = useCallback((): CleanupLogEntry[] => {
+    try {
+      return heatmapService.getCleanupHistory();
+    } catch {
+      return [];
+    }
+  }, []);
+
+  const manualCleanup = useCallback(
+    (days: number = 30) => {
+      try {
+        return heatmapService.clearOldRecords(days, 'manual');
+      } catch {
+        return { removed: 0, beforeCount: 0, afterCount: 0 };
+      }
+    },
+    []
+  );
+
+  const forceAggregate = useCallback(async () => {
+    try {
+      return await heatmapService.aggregateHeatmapData(true);
+    } catch {
+      return null;
+    }
+  }, []);
+
   return {
     permissionState,
     isSharingEnabled,
@@ -191,5 +250,9 @@ export function useLocationSharing() {
     shareRecordLocation,
     setPrecision,
     getNearbyHeatmap,
+    getHeatmapStats,
+    getCleanupHistory,
+    manualCleanup,
+    forceAggregate,
   };
 }

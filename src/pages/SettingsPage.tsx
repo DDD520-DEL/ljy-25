@@ -32,7 +32,7 @@ import { useBarkStore } from '@/store/useBarkStore';
 import { useReminders } from '@/hooks/useReminders';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useSync } from '@/hooks/useSync';
-import { useLocationSharing } from '@/hooks/useLocationSharing';
+import { useLocationSharing, CleanupLogEntry, HeatmapStats } from '@/hooks/useLocationSharing';
 import * as heatmapService from '@/services/heatmapService';
 import { getGridSizeMeters } from '@/services/locationService';
 
@@ -79,6 +79,10 @@ export function SettingsPage() {
     toggleSharing,
     setPrecision,
     enableSharing,
+    getHeatmapStats,
+    getCleanupHistory,
+    manualCleanup,
+    forceAggregate,
   } = useLocationSharing();
 
   const [showAddTime, setShowAddTime] = useState(false);
@@ -95,44 +99,51 @@ export function SettingsPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [formError, setFormError] = useState('');
 
-  const [heatmapStats, setHeatmapStats] = useState<{
-    totalCells: number;
-    totalRecords: number;
-    lastAggregatedAt: number;
-    dataDate: string;
-    nextAggregationAt: number;
-  } | null>(null);
+  const [heatmapStats, setHeatmapStats] = useState<HeatmapStats | null>(null);
+  const [cleanupHistory, setCleanupHistory] = useState<CleanupLogEntry[]>([]);
+  const [cleanupMessage, setCleanupMessage] = useState<string>('');
+
+  const refreshStats = async () => {
+    const stats = await getHeatmapStats();
+    setHeatmapStats(stats);
+    const history = getCleanupHistory();
+    setCleanupHistory(history);
+  };
 
   useEffect(() => {
-    const loadStats = async () => {
-      const stats = await heatmapService.getHeatmapStats();
-      setHeatmapStats(stats);
-    };
     if (isSharingEnabled) {
-      loadStats();
+      refreshStats();
     }
   }, [isSharingEnabled]);
 
   const handleToggleLocationSharing = async () => {
     const enabled = await toggleSharing();
     if (enabled) {
-      const stats = await heatmapService.getHeatmapStats();
-      setHeatmapStats(stats);
+      await refreshStats();
     }
   };
 
   const handleEnableLocationSharing = async () => {
     const enabled = await enableSharing();
     if (enabled) {
-      const stats = await heatmapService.getHeatmapStats();
-      setHeatmapStats(stats);
+      await refreshStats();
     }
   };
 
   const handleManualAggregate = async () => {
-    await heatmapService.aggregateHeatmapData(true);
-    const stats = await heatmapService.getHeatmapStats();
-    setHeatmapStats(stats);
+    await forceAggregate();
+    await refreshStats();
+  };
+
+  const handleManualCleanup = () => {
+    const result = manualCleanup(heatmapStats?.dataRetentionDays || 30);
+    setCleanupMessage(
+      result.removed > 0
+        ? `已清理 ${result.removed} 条过期记录，剩余 ${result.afterCount} 条`
+        : `没有需要清理的过期记录，当前保留 ${result.afterCount} 条`
+    );
+    refreshStats();
+    setTimeout(() => setCleanupMessage(''), 5000);
   };
 
   const gridSizeMeters = currentLocation
@@ -1222,6 +1233,18 @@ export function SettingsPage() {
                           </div>
                           <div className="text-xs text-gray-500">覆盖区域</div>
                         </div>
+                        <div className="bg-white rounded-lg p-3 text-center">
+                          <div className="text-lg font-bold text-purple-600">
+                            {heatmapStats.rawRecordCount}
+                          </div>
+                          <div className="text-xs text-gray-500">原始记录</div>
+                        </div>
+                        <div className="bg-white rounded-lg p-3 text-center">
+                          <div className="text-lg font-bold text-mint-600">
+                            {heatmapStats.dataRetentionDays}
+                          </div>
+                          <div className="text-xs text-gray-500">保留天数</div>
+                        </div>
                       </div>
                       <div className="text-xs text-gray-500 space-y-1">
                         <div className="flex justify-between">
@@ -1242,19 +1265,81 @@ export function SettingsPage() {
                           </span>
                         </div>
                         <div className="flex justify-between">
+                          <span>上次清理:</span>
+                          <span className="font-medium text-mint-600">
+                            {heatmapStats.lastCleanupAt
+                              ? new Date(heatmapStats.lastCleanupAt).toLocaleString('zh-CN', {
+                                  month: '2-digit',
+                                  day: '2-digit',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })
+                              : '暂无'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
                           <span>下次聚合:</span>
                           <span className="font-medium text-amber-600">
                             每日凌晨 00:00
                           </span>
                         </div>
                       </div>
-                      <button
-                        onClick={handleManualAggregate}
-                        className="mt-3 w-full py-2 bg-gray-200 text-gray-700 rounded-lg text-xs font-medium hover:bg-gray-300 transition-colors flex items-center justify-center gap-1"
-                      >
-                        <RefreshCw size={12} />
-                        立即刷新数据
-                      </button>
+
+                      {cleanupHistory.length > 0 && (
+                        <div className="mt-3 p-3 bg-white rounded-lg">
+                          <div className="text-xs font-medium text-gray-700 mb-2">最近清理记录</div>
+                          <div className="space-y-1 max-h-24 overflow-y-auto">
+                            {cleanupHistory.slice().reverse().slice(0, 5).map((log, index) => (
+                              <div key={index} className="text-xs text-gray-500 flex justify-between">
+                                <span>
+                                  {log.trigger === 'startup' && '🚀 启动时'}
+                                  {log.trigger === 'aggregation' && '⏰ 聚合时'}
+                                  {log.trigger === 'manual' && '👆 手动'}
+                                </span>
+                                <span className="text-coral-600">-{log.removedCount}条</span>
+                                <span>
+                                  {new Date(log.timestamp).toLocaleString('zh-CN', {
+                                    month: '2-digit',
+                                    day: '2-digit',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  })}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <AnimatePresence>
+                        {cleanupMessage && (
+                          <motion.div
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            className="mt-3 p-2 bg-mint-50 border border-mint-200 rounded-lg text-xs text-mint-700 text-center"
+                          >
+                            {cleanupMessage}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      <div className="flex gap-2 mt-3">
+                        <button
+                          onClick={handleManualAggregate}
+                          className="flex-1 py-2 bg-gray-200 text-gray-700 rounded-lg text-xs font-medium hover:bg-gray-300 transition-colors flex items-center justify-center gap-1"
+                        >
+                          <RefreshCw size={12} />
+                          立即刷新数据
+                        </button>
+                        <button
+                          onClick={handleManualCleanup}
+                          className="flex-1 py-2 bg-coral-100 text-coral-700 rounded-lg text-xs font-medium hover:bg-coral-200 transition-colors flex items-center justify-center gap-1"
+                        >
+                          <Trash2 size={12} />
+                          清理过期数据
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
