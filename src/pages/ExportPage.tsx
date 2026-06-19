@@ -15,6 +15,11 @@ import {
   RefreshCcw,
   CloudUpload,
   CloudDownload,
+  Filter,
+  Calendar,
+  Tag,
+  X,
+  ChevronDown,
 } from 'lucide-react';
 import { useBarkRecords } from '@/hooks/useBarkRecords';
 import { useStats } from '@/hooks/useStats';
@@ -28,11 +33,21 @@ import {
   downloadBlob,
   extractAudioFiles,
 } from '@/utils/storage';
-import { WEEKDAYS } from '@/types';
+import { WEEKDAYS, TIME_PERIOD_OPTIONS, TimePeriodPreset } from '@/types';
+import {
+  filterRecordsByTags,
+  filterRecordsByDateRange,
+  getAllTags,
+  calculateSummaryStats,
+  calculateHourlyStats,
+  getMaxHourlyCount,
+} from '@/utils/statistics';
+import { getDateRangeForPreset, formatDateRange } from '@/utils/date';
+import { getTagColorClasses } from '@/lib/utils';
 
 export function ExportPage() {
   const { records } = useBarkRecords();
-  const { summaryStats, peakHourInfo, peakDayInfo, chartData, maxHourlyCount } =
+  const { summaryStats: allSummaryStats, peakHourInfo: allPeakHourInfo, peakDayInfo: allPeakDayInfo, chartData: allChartData, maxHourlyCount: allMaxHourlyCount } =
     useStats();
   const dogs = useBarkStore((s) => s.dogs);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -46,17 +61,93 @@ export function ExportPage() {
   const [downloadMessage, setDownloadMessage] = useState('');
   const [fullSyncMessage, setFullSyncMessage] = useState('');
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [showFilter, setShowFilter] = useState(false);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [tagMatchAll, setTagMatchAll] = useState(false);
+  const [dateRangeKey, setDateRangeKey] = useState<TimePeriodPreset | 'all'>('all');
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
 
-  const audioFiles = useMemo(() => extractAudioFiles(records), [records]);
+  const allTags = useMemo(() => getAllTags(records), [records]);
+
+  const dateRange = useMemo(() => {
+    if (dateRangeKey === 'all') {
+      return null;
+    }
+    if (dateRangeKey === 'custom') {
+      if (customStartDate && customEndDate) {
+        const start = new Date(customStartDate).getTime();
+        const end = new Date(customEndDate).getTime() + 86399999;
+        return { start, end, label: `自定义 (${formatDateRange(start, end)})` };
+      }
+      return null;
+    }
+    return getDateRangeForPreset(dateRangeKey);
+  }, [dateRangeKey, customStartDate, customEndDate]);
+
+  const filteredRecords = useMemo(() => {
+    let result = records;
+
+    if (dateRange) {
+      result = filterRecordsByDateRange(result, dateRange);
+    }
+
+    if (selectedTags.length > 0) {
+      result = filterRecordsByTags(result, selectedTags, tagMatchAll);
+    }
+
+    return result;
+  }, [records, dateRange, selectedTags, tagMatchAll]);
+
+  const filteredSummaryStats = useMemo(() => calculateSummaryStats(filteredRecords), [filteredRecords]);
+  const filteredHourlyStats = useMemo(() => calculateHourlyStats(filteredRecords), [filteredRecords]);
+  const filteredMaxHourlyCount = useMemo(() => getMaxHourlyCount(filteredHourlyStats), [filteredHourlyStats]);
+
+  const filteredPeakHourInfo = useMemo(() => {
+    if (filteredSummaryStats.peakHour < 0) return null;
+    return {
+      hour: filteredSummaryStats.peakHour,
+      label: `${filteredSummaryStats.peakHour.toString().padStart(2, '0')}:00`,
+      period: '',
+      count: filteredHourlyStats[filteredSummaryStats.peakHour]?.count || 0,
+    };
+  }, [filteredSummaryStats.peakHour, filteredHourlyStats]);
+
+  const filteredPeakDayInfo = useMemo(() => {
+    if (filteredSummaryStats.peakDay < 0) return null;
+    return {
+      day: filteredSummaryStats.peakDay,
+      label: WEEKDAYS[filteredSummaryStats.peakDay],
+    };
+  }, [filteredSummaryStats.peakDay]);
+
+  const filteredChartData = useMemo(() => {
+    return filteredHourlyStats.map((stat) => ({
+      hour: stat.hour,
+      hourLabel: `${stat.hour}时`,
+      count: stat.count,
+      isPeak: stat.hour === filteredSummaryStats.peakHour,
+    }));
+  }, [filteredHourlyStats, filteredSummaryStats.peakHour]);
+
+  const hasActiveFilters = selectedTags.length > 0 || dateRangeKey !== 'all';
+
+  const summaryStats = hasActiveFilters ? filteredSummaryStats : allSummaryStats;
+  const peakHourInfo = hasActiveFilters ? filteredPeakHourInfo : allPeakHourInfo;
+  const peakDayInfo = hasActiveFilters ? filteredPeakDayInfo : allPeakDayInfo;
+  const chartData = hasActiveFilters ? filteredChartData : allChartData;
+  const maxHourlyCount = hasActiveFilters ? filteredMaxHourlyCount : allMaxHourlyCount;
+
+  const audioFiles = useMemo(() => extractAudioFiles(filteredRecords), [filteredRecords]);
   const hasAudio = audioFiles.length > 0;
 
   const textReport = useMemo(() => {
-    return exportRecordsAsText(records, dogs);
-  }, [records, dogs]);
+    return exportRecordsAsText(filteredRecords, dogs);
+  }, [filteredRecords, dogs]);
 
   const jsonReport = useMemo(() => {
-    return exportRecordsAsJSON(records);
-  }, [records]);
+    return exportRecordsAsJSON(filteredRecords);
+  }, [filteredRecords]);
 
   const currentContent = exportFormat === 'text' ? textReport : jsonReport;
 
@@ -91,7 +182,7 @@ export function ExportPage() {
 
     try {
       const formats: ('text' | 'json')[] = [exportFormat];
-      const bundle = await prepareExportBundle(records, formats, dogs);
+      const bundle = await prepareExportBundle(filteredRecords, formats, dogs);
 
       const allFiles: { fileName: string; blob: Blob }[] = [];
       const datePrefix = getDatePrefix();
@@ -154,7 +245,7 @@ export function ExportPage() {
     setDownloadProgress(0);
 
     try {
-      const bundle = await prepareExportBundle(records, [], dogs);
+      const bundle = await prepareExportBundle(filteredRecords, [], dogs);
       const allFiles: { fileName: string; blob: Blob }[] = [...bundle.audioFiles];
       if (bundle.readme) {
         allFiles.push({
@@ -221,7 +312,7 @@ export function ExportPage() {
       const allFiles: { fileName: string; blob: Blob }[] = [];
 
       dogs.forEach((dog) => {
-        const dogRecords = records.filter((r) => r.dogId === dog.id);
+        const dogRecords = filteredRecords.filter((r) => r.dogId === dog.id);
         if (dogRecords.length === 0) return;
         const safeName = dog.name.replace(/[\\/:*?"<>|]/g, '_').substring(0, 20);
         if (exportFormat === 'text') {
@@ -239,7 +330,7 @@ export function ExportPage() {
         }
       });
 
-      const unassigned = records.filter((r) => !r.dogId);
+      const unassigned = filteredRecords.filter((r) => !r.dogId);
       if (unassigned.length > 0) {
         if (exportFormat === 'text') {
           const content = exportRecordsAsText(unassigned, dogs);
@@ -357,6 +448,213 @@ export function ExportPage() {
                 </div>
               </div>
             </div>
+          </motion.div>
+        )}
+
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.08 }}
+          className="bg-white rounded-2xl shadow-soft border border-gray-100 mb-6 overflow-hidden"
+        >
+          <button
+            onClick={() => setShowFilter(!showFilter)}
+            className="w-full px-5 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
+                <Filter className="text-amber-600" size={20} />
+              </div>
+              <div className="text-left">
+                <h3 className="font-display font-bold text-gray-800">筛选导出</h3>
+                <p className="text-xs text-gray-500">
+                  {hasActiveFilters
+                    ? `已筛选 ${filteredRecords.length} 条记录`
+                    : '按标签和日期筛选要导出的记录'}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {hasActiveFilters && (
+                <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs rounded-full">
+                  已筛选
+                </span>
+              )}
+              <ChevronDown
+                className={`text-gray-400 transition-transform ${showFilter ? 'rotate-180' : ''}`}
+                size={20}
+              />
+            </div>
+          </button>
+
+          <AnimatePresence>
+            {showFilter && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.25 }}
+                className="overflow-hidden"
+              >
+                <div className="px-5 pb-5 space-y-5 border-t border-gray-100 pt-4">
+                  <div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <Calendar size={16} className="text-amber-600" />
+                      <span className="text-sm font-medium text-gray-700">日期范围</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => setDateRangeKey('all')}
+                        className={`px-3 py-1.5 text-sm rounded-lg transition-all ${
+                          dateRangeKey === 'all'
+                            ? 'bg-amber-500 text-white'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        全部
+                      </button>
+                      {TIME_PERIOD_OPTIONS.map((option) => (
+                        <button
+                          key={option.key}
+                          onClick={() => setDateRangeKey(option.key)}
+                          className={`px-3 py-1.5 text-sm rounded-lg transition-all ${
+                            dateRangeKey === option.key
+                              ? 'bg-amber-500 text-white'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <AnimatePresence>
+                      {dateRangeKey === 'custom' && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                          animate={{ opacity: 1, height: 'auto', marginTop: 12 }}
+                          exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                          className="overflow-hidden"
+                        >
+                          <div className="flex flex-wrap items-center gap-3">
+                            <div className="flex items-center gap-2">
+                              <label className="text-sm text-gray-600">开始</label>
+                              <input
+                                type="date"
+                                value={customStartDate}
+                                onChange={(e) => setCustomStartDate(e.target.value)}
+                                className="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent"
+                              />
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <label className="text-sm text-gray-600">结束</label>
+                              <input
+                                type="date"
+                                value={customEndDate}
+                                onChange={(e) => setCustomEndDate(e.target.value)}
+                                className="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent"
+                              />
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+
+                  {allTags.length > 0 && (
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <Tag size={16} className="text-amber-600" />
+                          <span className="text-sm font-medium text-gray-700">标签筛选</span>
+                        </div>
+                        {selectedTags.length > 0 && (
+                          <button
+                            onClick={() => setSelectedTags([])}
+                            className="text-xs text-gray-400 hover:text-coral-600 transition-colors"
+                          >
+                            清除标签
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        {allTags.map((tag) => {
+                          const isSelected = selectedTags.includes(tag);
+                          return (
+                            <button
+                              key={tag}
+                              onClick={() => {
+                                setSelectedTags((prev) =>
+                                  prev.includes(tag)
+                                    ? prev.filter((t) => t !== tag)
+                                    : [...prev, tag]
+                                );
+                              }}
+                              className={`px-3 py-1.5 text-sm rounded-full border transition-all ${
+                                isSelected
+                                  ? getTagColorClasses(tag, 'solid')
+                                  : `${getTagColorClasses(tag, 'light')} hover:opacity-100 opacity-70`
+                              }`}
+                            >
+                              {tag}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <div className="flex items-center gap-4 text-sm">
+                        <span className="text-gray-500">匹配模式：</span>
+                        <label className="flex items-center gap-1.5 cursor-pointer">
+                          <input
+                            type="radio"
+                            checked={!tagMatchAll}
+                            onChange={() => setTagMatchAll(false)}
+                            className="w-4 h-4 text-amber-500"
+                          />
+                          <span className="text-gray-700">任意标签</span>
+                        </label>
+                        <label className="flex items-center gap-1.5 cursor-pointer">
+                          <input
+                            type="radio"
+                            checked={tagMatchAll}
+                            onChange={() => setTagMatchAll(true)}
+                            className="w-4 h-4 text-amber-500"
+                          />
+                          <span className="text-gray-700">全部标签</span>
+                        </label>
+                      </div>
+                    </div>
+                  )}
+
+                  {hasActiveFilters && (
+                    <div className="bg-amber-50 rounded-xl p-3 text-sm text-amber-700">
+                      <div className="flex items-center gap-2">
+                        <Info size={16} className="flex-shrink-0" />
+                        <span>
+                          当前筛选条件匹配 <strong>{filteredRecords.length}</strong> 条记录
+                          {records.length > 0 && (
+                            <>（占总数的 {((filteredRecords.length / records.length) * 100).toFixed(1)}%）</>
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.div>
+
+        {hasActiveFilters && filteredRecords.length === 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-amber-50 border border-amber-200 rounded-2xl p-6 mb-6 text-center"
+          >
+            <div className="text-4xl mb-3">🔍</div>
+            <p className="text-amber-700 font-medium">没有符合筛选条件的记录</p>
+            <p className="text-amber-600 text-sm mt-1">请调整筛选条件后再试</p>
           </motion.div>
         )}
 
@@ -740,7 +1038,7 @@ export function ExportPage() {
           <div className="flex gap-3">
             <button
               onClick={handleCopy}
-              disabled={isDownloading}
+              disabled={isDownloading || filteredRecords.length === 0}
               className="flex-1 py-4 px-6 bg-mint-500 text-white rounded-xl font-medium hover:bg-mint-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-mint-200 disabled:opacity-50"
             >
               {copied ? (
@@ -757,7 +1055,7 @@ export function ExportPage() {
             </button>
             <button
               onClick={handleDownloadReport}
-              disabled={isDownloading}
+              disabled={isDownloading || filteredRecords.length === 0}
               className="flex-1 py-4 px-6 bg-amber-500 text-white rounded-xl font-medium hover:bg-amber-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-200 disabled:opacity-50"
             >
               <Download size={20} />
@@ -767,7 +1065,7 @@ export function ExportPage() {
 
           <button
             onClick={handleDownloadAll}
-            disabled={isDownloading}
+            disabled={isDownloading || filteredRecords.length === 0}
             className="w-full py-4 px-6 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-xl font-medium hover:from-indigo-600 hover:to-purple-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-200 disabled:opacity-50"
           >
             {isDownloading ? (
@@ -791,7 +1089,7 @@ export function ExportPage() {
           {hasAudio && (
             <button
               onClick={handleDownloadAudioOnly}
-              disabled={isDownloading}
+              disabled={isDownloading || filteredRecords.length === 0}
               className="w-full py-3 px-6 border-2 border-indigo-200 text-indigo-600 rounded-xl font-medium hover:bg-indigo-50 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
             >
               <Music size={18} />
@@ -799,7 +1097,7 @@ export function ExportPage() {
             </button>
           )}
 
-          {dogs.length > 0 && (
+          {dogs.length > 0 && filteredRecords.length > 0 && (
             <button
               onClick={handleDownloadByDog}
               disabled={isDownloading}
