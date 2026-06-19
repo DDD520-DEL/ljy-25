@@ -4,7 +4,14 @@ import { HomePage } from '@/pages/HomePage';
 import { AnalysisPage } from '@/pages/AnalysisPage';
 import { RecordsPage } from '@/pages/RecordsPage';
 import { ExportPage } from '@/pages/ExportPage';
+import { SettingsPage } from '@/pages/SettingsPage';
 import { Navigation } from '@/components/Navigation';
+import { useReminders } from '@/hooks/useReminders';
+
+function AppInitializer() {
+  useReminders();
+  return null;
+}
 
 function AnimatedRoutes() {
   const location = useLocation();
@@ -64,6 +71,19 @@ function AnimatedRoutes() {
             </motion.div>
           }
         />
+        <Route
+          path="/settings"
+          element={
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.3 }}
+            >
+              <SettingsPage />
+            </motion.div>
+          }
+        />
       </Routes>
     </AnimatePresence>
   );
@@ -72,6 +92,7 @@ function AnimatedRoutes() {
 export default function App() {
   return (
     <Router>
+      <AppInitializer />
       <div className="min-h-screen bg-gradient-to-br from-cream-50 to-cream-100">
         <AnimatedRoutes />
         <Navigation />

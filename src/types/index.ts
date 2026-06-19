@@ -47,10 +47,24 @@ export interface SummaryStats {
   recordsByDay: DailyCount[];
 }
 
+export interface ReminderTime {
+  id: string;
+  hour: number;
+  minute: number;
+  enabled: boolean;
+}
+
+export interface ReminderSettings {
+  enabled: boolean;
+  times: ReminderTime[];
+  lastTriggeredDates: Record<string, string>;
+}
+
 export interface AppSettings {
   vibrationEnabled: boolean;
   soundEnabled: boolean;
   theme: 'light' | 'dark' | 'auto';
+  reminders: ReminderSettings;
 }
 
 export type DogMood = 'happy' | 'neutral' | 'confused' | 'sad' | 'tired';

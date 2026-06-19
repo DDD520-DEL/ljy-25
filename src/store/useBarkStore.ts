@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { BarkRecord, AppSettings } from '@/types';
+import { BarkRecord, AppSettings, ReminderTime } from '@/types';
 import { generateId } from '@/utils/storage';
 
 interface BarkState {
@@ -15,12 +15,25 @@ interface BarkState {
   addTagToRecord: (id: string, tag: string) => void;
   removeTagFromRecord: (id: string, tag: string) => void;
   getAllTags: () => string[];
+  addReminderTime: (hour: number, minute: number) => void;
+  updateReminderTime: (id: string, data: Partial<ReminderTime>) => void;
+  removeReminderTime: (id: string) => void;
+  toggleReminders: (enabled: boolean) => void;
+  markReminderTriggered: (reminderId: string, dateStr: string) => void;
 }
 
 const initialSettings: AppSettings = {
   vibrationEnabled: true,
   soundEnabled: false,
   theme: 'light',
+  reminders: {
+    enabled: false,
+    times: [
+      { id: generateId(), hour: 8, minute: 0, enabled: true },
+      { id: generateId(), hour: 20, minute: 0, enabled: true },
+    ],
+    lastTriggeredDates: {},
+  },
 };
 
 export const useBarkStore = create<BarkState>()(
@@ -121,6 +134,74 @@ export const useBarkStore = create<BarkState>()(
         });
         return Array.from(tagSet).sort();
       },
+
+      addReminderTime: (hour: number, minute: number) => {
+        set((state) => ({
+          settings: {
+            ...state.settings,
+            reminders: {
+              ...state.settings.reminders,
+              times: [
+                ...state.settings.reminders.times,
+                { id: generateId(), hour, minute, enabled: true },
+              ].sort((a, b) => a.hour * 60 + a.minute - (b.hour * 60 + b.minute)),
+            },
+          },
+        }));
+      },
+
+      updateReminderTime: (id: string, data: Partial<ReminderTime>) => {
+        set((state) => ({
+          settings: {
+            ...state.settings,
+            reminders: {
+              ...state.settings.reminders,
+              times: state.settings.reminders.times
+                .map((t) => (t.id === id ? { ...t, ...data } : t))
+                .sort((a, b) => a.hour * 60 + a.minute - (b.hour * 60 + b.minute)),
+            },
+          },
+        }));
+      },
+
+      removeReminderTime: (id: string) => {
+        set((state) => ({
+          settings: {
+            ...state.settings,
+            reminders: {
+              ...state.settings.reminders,
+              times: state.settings.reminders.times.filter((t) => t.id !== id),
+            },
+          },
+        }));
+      },
+
+      toggleReminders: (enabled: boolean) => {
+        set((state) => ({
+          settings: {
+            ...state.settings,
+            reminders: {
+              ...state.settings.reminders,
+              enabled,
+            },
+          },
+        }));
+      },
+
+      markReminderTriggered: (reminderId: string, dateStr: string) => {
+        set((state) => ({
+          settings: {
+            ...state.settings,
+            reminders: {
+              ...state.settings.reminders,
+              lastTriggeredDates: {
+                ...state.settings.reminders.lastTriggeredDates,
+                [reminderId]: dateStr,
+              },
+            },
+          },
+        }));
+      },
     }),
     {
       name: 'bark-recorder-storage',
@@ -129,6 +210,17 @@ export const useBarkStore = create<BarkState>()(
         records: state.records,
         settings: state.settings,
       }),
+      onRehydrateStorage: () => (state) => {
+        if (state && !state.settings.reminders) {
+          state.settings.reminders = initialSettings.reminders;
+        }
+        if (state && state.settings.reminders && !state.settings.reminders.lastTriggeredDates) {
+          state.settings.reminders.lastTriggeredDates = {};
+        }
+        if (state && state.settings.reminders && !state.settings.reminders.times) {
+          state.settings.reminders.times = initialSettings.reminders.times;
+        }
+      },
     }
   )
 );

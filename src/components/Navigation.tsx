@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Home, BarChart3, List, Share2 } from 'lucide-react';
+import { Home, BarChart3, List, Share2, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface NavItem {
@@ -14,6 +14,7 @@ const navItems: NavItem[] = [
   { to: '/analysis', icon: BarChart3, label: '分析' },
   { to: '/records', icon: List, label: '记录管理' },
   { to: '/export', icon: Share2, label: '导出' },
+  { to: '/settings', icon: Settings, label: '设置' },
 ];
 
 export function Navigation() {
