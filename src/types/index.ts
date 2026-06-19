@@ -1,3 +1,58 @@
+export interface User {
+  id: string;
+  username: string;
+  email: string;
+  avatar?: string;
+  token: string;
+  createdAt: number;
+  lastLoginAt: number;
+}
+
+export interface SyncStatus {
+  lastSyncAt: number;
+  lastSyncDirection: 'push' | 'pull' | 'full' | null;
+  pendingChanges: number;
+  isSyncing: boolean;
+  lastError?: string;
+}
+
+export interface SyncRecord<T> {
+  data: T;
+  type: 'record' | 'dog';
+  operation: 'create' | 'update' | 'delete';
+  synced: boolean;
+}
+
+export interface SyncPushPayload {
+  userId: string;
+  records: BarkRecord[];
+  dogs: DogProfile[];
+  deletedRecordIds: string[];
+  deletedDogIds: string[];
+  lastSyncAt: number;
+}
+
+export interface SyncPullPayload {
+  userId: string;
+  since: number;
+}
+
+export interface SyncPullResponse {
+  records: BarkRecord[];
+  dogs: DogProfile[];
+  deletedRecordIds: string[];
+  deletedDogIds: string[];
+  serverTime: number;
+  hasMore: boolean;
+}
+
+export interface SyncFullResponse {
+  records: BarkRecord[];
+  dogs: DogProfile[];
+  settings: AppSettings;
+  serverTime: number;
+}
+
 export interface DogProfile {
   id: string;
   name: string;

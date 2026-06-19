@@ -11,10 +11,16 @@ import {
   FileAudio,
   Loader2,
   Info,
+  Cloud,
+  RefreshCcw,
+  CloudUpload,
+  CloudDownload,
 } from 'lucide-react';
 import { useBarkRecords } from '@/hooks/useBarkRecords';
 import { useStats } from '@/hooks/useStats';
 import { useBarkStore } from '@/store/useBarkStore';
+import { useAuthStore } from '@/store/useAuthStore';
+import { useSync } from '@/hooks/useSync';
 import {
   exportRecordsAsText,
   exportRecordsAsJSON,
@@ -29,12 +35,17 @@ export function ExportPage() {
   const { summaryStats, peakHourInfo, peakDayInfo, chartData, maxHourlyCount } =
     useStats();
   const dogs = useBarkStore((s) => s.dogs);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const syncStatus = useAuthStore((s) => s.syncStatus);
+  const { forceFullSync } = useSync();
   const [copied, setCopied] = useState(false);
   const [exportFormat, setExportFormat] = useState<'text' | 'json'>('text');
   const [includeAudio, setIncludeAudio] = useState(true);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [downloadMessage, setDownloadMessage] = useState('');
+  const [fullSyncMessage, setFullSyncMessage] = useState('');
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
 
   const audioFiles = useMemo(() => extractAudioFiles(records), [records]);
   const hasAudio = audioFiles.length > 0;
@@ -176,6 +187,24 @@ export function ExportPage() {
         setDownloadProgress(0);
         setDownloadMessage('');
       }, 3000);
+    }
+  };
+
+  const handleForceFullSync = async () => {
+    setShowConfirmDialog(false);
+    setFullSyncMessage('');
+    const result = await forceFullSync();
+    if (result.success) {
+      const parts: string[] = [];
+      if (result.pushedRecords) parts.push(`上传 ${result.pushedRecords} 项`);
+      if (result.pulledRecords) parts.push(`拉取 ${result.pulledRecords} 项`);
+      setFullSyncMessage(
+        parts.length > 0 ? `✓ 全量同步完成：${parts.join('，')}` : '✓ 全量同步完成'
+      );
+      setTimeout(() => setFullSyncMessage(''), 5000);
+    } else {
+      setFullSyncMessage(result.message || '全量同步失败');
+      setTimeout(() => setFullSyncMessage(''), 5000);
     }
   };
 
@@ -436,6 +465,176 @@ export function ExportPage() {
               📝 本报告由「狗叫记录器」自动生成，数据仅供邻里沟通参考
             </p>
           </div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25 }}
+          className="bg-white rounded-2xl p-5 shadow-soft mb-6"
+        >
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center">
+              <Cloud className="text-white" size={20} />
+            </div>
+            <div>
+              <h3 className="font-display font-bold text-gray-800">云端同步</h3>
+              <p className="text-xs text-gray-500">数据云端备份与恢复</p>
+            </div>
+            {isAuthenticated && (
+              <span className="ml-auto px-2.5 py-1 bg-mint-100 text-mint-700 text-xs rounded-full flex items-center gap-1">
+                <Check size={12} />
+                已登录
+              </span>
+            )}
+          </div>
+
+          {fullSyncMessage && (
+            <motion.div
+              initial={{ opacity: 0, y: -5 }}
+              animate={{ opacity: 1, y: 0 }}
+              className={`p-3 rounded-xl mb-4 text-sm ${
+                fullSyncMessage.startsWith('✓')
+                  ? 'bg-mint-50 border border-mint-200 text-mint-700'
+                  : 'bg-coral-50 border border-coral-200 text-coral-700'
+              }`}
+            >
+              {fullSyncMessage}
+            </motion.div>
+          )}
+
+          {!isAuthenticated ? (
+            <div className="text-center py-6 bg-amber-50 rounded-xl">
+              <Cloud className="mx-auto text-amber-400 mb-2" size={32} />
+              <p className="text-amber-700 text-sm font-medium mb-2">
+                尚未登录云端账号
+              </p>
+              <p className="text-amber-600 text-xs mb-3">
+                请前往「设置」页面登录后使用云端同步功能
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                <div className="bg-indigo-50 rounded-xl p-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <CloudUpload className="text-indigo-500" size={14} />
+                    <span className="text-xs text-indigo-600">本地记录</span>
+                  </div>
+                  <div className="text-2xl font-bold text-indigo-700">
+                    {records.length}
+                  </div>
+                  <div className="text-xs text-indigo-500">条 + {dogs.length} 只狗狗</div>
+                </div>
+                <div className="bg-purple-50 rounded-xl p-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <RefreshCcw className="text-purple-500" size={14} />
+                    <span className="text-xs text-purple-600">上次同步</span>
+                  </div>
+                  <div className="text-lg font-bold text-purple-700 truncate">
+                    {syncStatus.lastSyncAt > 0
+                      ? new Date(syncStatus.lastSyncAt).toLocaleString('zh-CN', {
+                          month: '2-digit',
+                          day: '2-digit',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })
+                      : '—'}
+                  </div>
+                  <div className="text-xs text-purple-500">
+                    {syncStatus.pendingChanges > 0
+                      ? `${syncStatus.pendingChanges} 项待同步`
+                      : '数据同步正常'}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowConfirmDialog(true)}
+                disabled={syncStatus.isSyncing || isDownloading}
+                className="w-full py-4 px-6 bg-gradient-to-r from-rose-500 to-orange-500 text-white rounded-xl font-medium hover:from-rose-600 hover:to-orange-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-rose-200 disabled:opacity-50"
+              >
+                {syncStatus.isSyncing ? (
+                  <>
+                    <Loader2 size={20} className="animate-spin" />
+                    正在同步...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCcw size={20} />
+                    强制全量同步
+                  </>
+                )}
+              </button>
+
+              <p className="mt-3 text-xs text-gray-500 text-center space-y-0.5">
+                <span>⚠️ 全量同步将用云端数据覆盖本地数据</span>
+                <br />
+                <span>适用于更换设备或数据不一致时使用</span>
+              </p>
+            </>
+          )}
+
+          <AnimatePresence>
+            {showConfirmDialog && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4"
+                onClick={() => setShowConfirmDialog(false)}
+              >
+                <motion.div
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.9, opacity: 0 }}
+                  className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="text-center mb-5">
+                    <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-gradient-to-br from-rose-400 to-orange-500 flex items-center justify-center">
+                      <RefreshCcw className="text-white" size={28} />
+                    </div>
+                    <h3 className="font-display text-xl font-bold text-gray-800 mb-2">
+                      确认强制全量同步？
+                    </h3>
+                    <p className="text-sm text-gray-600 space-y-2">
+                      <span>此操作将：</span>
+                    </p>
+                    <div className="mt-3 space-y-2 text-left bg-amber-50 rounded-xl p-4">
+                      <div className="flex items-start gap-2 text-sm text-amber-800">
+                        <CloudUpload size={16} className="mt-0.5 flex-shrink-0 text-amber-600" />
+                        <span>将本地所有数据上传至云端</span>
+                      </div>
+                      <div className="flex items-start gap-2 text-sm text-amber-800">
+                        <CloudDownload size={16} className="mt-0.5 flex-shrink-0 text-amber-600" />
+                        <span>从云端拉取全量数据覆盖本地</span>
+                      </div>
+                      <div className="flex items-start gap-2 text-sm text-amber-800">
+                        <AlertCircle size={16} className="mt-0.5 flex-shrink-0 text-amber-600" />
+                        <span>冲突数据以云端为准</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setShowConfirmDialog(false)}
+                      className="flex-1 py-3 px-4 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors"
+                    >
+                      取消
+                    </button>
+                    <button
+                      onClick={handleForceFullSync}
+                      className="flex-1 py-3 px-4 bg-gradient-to-r from-rose-500 to-orange-500 text-white rounded-xl font-medium hover:from-rose-600 hover:to-orange-600 transition-all"
+                    >
+                      确认同步
+                    </button>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
 
         <motion.div

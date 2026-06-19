@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Bell,
@@ -12,9 +12,32 @@ import {
   Smartphone,
   Check,
   X,
+  User,
+  LogOut,
+  Cloud,
+  CloudOff,
+  CloudUpload,
+  Loader2,
+  RefreshCw,
+  Mail,
+  Lock,
+  UserPlus,
+  LogIn,
 } from 'lucide-react';
 import { useBarkStore } from '@/store/useBarkStore';
 import { useReminders } from '@/hooks/useReminders';
+import { useAuthStore } from '@/store/useAuthStore';
+import { useSync } from '@/hooks/useSync';
+
+function formatDateTime(timestamp: number): string {
+  if (!timestamp) return '从未同步';
+  return new Date(timestamp).toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
 
 export function SettingsPage() {
   const { settings, updateSettings } = useBarkStore();
@@ -29,12 +52,38 @@ export function SettingsPage() {
     formatReminderTime,
   } = useReminders();
 
+  const user = useAuthStore((s) => s.user);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const isLoading = useAuthStore((s) => s.isLoading);
+  const authError = useAuthStore((s) => s.error);
+  const syncStatus = useAuthStore((s) => s.syncStatus);
+  const login = useAuthStore((s) => s.login);
+  const register = useAuthStore((s) => s.register);
+  const logout = useAuthStore((s) => s.logout);
+  const clearAuthError = useAuthStore((s) => s.clearError);
+
+  const { pushOnLogin, syncIncremental } = useSync();
+
   const [showAddTime, setShowAddTime] = useState(false);
   const [newHour, setNewHour] = useState(9);
   const [newMinute, setNewMinute] = useState(0);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editHour, setEditHour] = useState(0);
   const [editMinute, setEditMinute] = useState(0);
+
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [formError, setFormError] = useState('');
+  const [syncMessage, setSyncMessage] = useState('');
+
+  useEffect(() => {
+    if (authError) {
+      setFormError(authError);
+    }
+  }, [authError]);
 
   const handleEnableReminders = async (enabled: boolean) => {
     if (enabled) {
@@ -78,6 +127,392 @@ export function SettingsPage() {
 
   const permStatus = getPermissionStatus();
 
+  const resetForm = () => {
+    setUsername('');
+    setEmail('');
+    setPassword('');
+    setConfirmPassword('');
+    setFormError('');
+    clearAuthError();
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError('');
+    clearAuthError();
+
+    if (!username || !password) {
+      setFormError('请输入用户名和密码');
+      return;
+    }
+
+    try {
+      await login(username.trim(), password);
+      resetForm();
+      setTimeout(() => {
+        pushOnLogin();
+      }, 300);
+    } catch {
+      // error handled in store
+    }
+  };
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError('');
+    clearAuthError();
+
+    if (!username || !email || !password) {
+      setFormError('请填写完整的注册信息');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setFormError('两次输入的密码不一致');
+      return;
+    }
+    if (password.length < 6) {
+      setFormError('密码至少需要6个字符');
+      return;
+    }
+
+    try {
+      await register(username.trim(), email.trim(), password);
+      resetForm();
+    } catch {
+      // error handled in store
+    }
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    setSyncMessage('');
+  };
+
+  const handleSyncNow = async () => {
+    setSyncMessage('');
+    const result = await syncIncremental();
+    if (result.success) {
+      const parts: string[] = [];
+      if (result.pushedRecords) parts.push(`上传 ${result.pushedRecords} 项`);
+      if (result.mergedRecords || result.mergedDogs) {
+        parts.push(`合并 ${(result.mergedRecords || 0) + (result.mergedDogs || 0)} 项`);
+      }
+      if (result.deletedLocal) parts.push(`清理 ${result.deletedLocal} 项`);
+      setSyncMessage(parts.length > 0 ? `✓ ${parts.join('，')}` : '✓ 数据已是最新');
+      setTimeout(() => setSyncMessage(''), 3000);
+    } else {
+      setSyncMessage(result.message || '同步失败');
+      setTimeout(() => setSyncMessage(''), 4000);
+    }
+  };
+
+  const renderAuthSection = () => {
+    if (isAuthenticated && user) {
+      return (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05 }}
+          className="bg-white rounded-2xl shadow-soft overflow-hidden mb-6"
+        >
+          <div className="p-4 border-b border-gray-100 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center">
+              <User className="text-white" size={20} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h2 className="font-display font-bold text-gray-800 truncate">
+                {user.username}
+              </h2>
+              <p className="text-xs text-gray-500 truncate">{user.email}</p>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="p-2 text-gray-400 hover:text-coral-500 hover:bg-coral-50 rounded-lg transition-colors"
+              title="退出登录"
+            >
+              <LogOut size={20} />
+            </button>
+          </div>
+
+          <div className="p-4">
+            <div
+              className={`rounded-xl p-4 mb-4 ${
+                syncStatus.lastError
+                  ? 'bg-coral-50 border border-coral-200'
+                  : syncStatus.isSyncing
+                  ? 'bg-blue-50 border border-blue-200'
+                  : 'bg-mint-50 border border-mint-200'
+              }`}
+            >
+              <div className="flex items-center gap-3 mb-3">
+                <div
+                  className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                    syncStatus.lastError
+                      ? 'bg-coral-100'
+                      : syncStatus.isSyncing
+                      ? 'bg-blue-100'
+                      : 'bg-mint-100'
+                  }`}
+                >
+                  {syncStatus.isSyncing ? (
+                    <Loader2 className="text-blue-600 animate-spin" size={20} />
+                  ) : syncStatus.lastError ? (
+                    <CloudOff className="text-coral-600" size={20} />
+                  ) : (
+                    <Cloud className="text-mint-600" size={20} />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div
+                    className={`font-medium ${
+                      syncStatus.lastError
+                        ? 'text-coral-800'
+                        : syncStatus.isSyncing
+                        ? 'text-blue-800'
+                        : 'text-mint-800'
+                    }`}
+                  >
+                    {syncStatus.isSyncing
+                      ? '正在同步数据...'
+                      : syncStatus.lastError
+                      ? '同步遇到问题'
+                      : '云端同步已开启'}
+                  </div>
+                  <div
+                    className={`text-xs ${
+                      syncStatus.lastError
+                        ? 'text-coral-600'
+                        : syncStatus.isSyncing
+                        ? 'text-blue-600'
+                        : 'text-mint-600'
+                    }`}
+                  >
+                    {syncStatus.isSyncing
+                      ? '请稍候'
+                      : syncStatus.lastError
+                      ? syncStatus.lastError
+                      : `上次同步：${formatDateTime(syncStatus.lastSyncAt)}`}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2 mb-3">
+                {syncStatus.pendingChanges > 0 && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-100 text-amber-700 text-xs rounded-full">
+                    <CloudUpload size={12} />
+                    {syncStatus.pendingChanges} 项待上传
+                  </span>
+                )}
+                {syncStatus.lastSyncDirection && (
+                  <span className="inline-flex items-center px-2.5 py-1 bg-gray-100 text-gray-600 text-xs rounded-full">
+                    {syncStatus.lastSyncDirection === 'push' && '上次：上传'}
+                    {syncStatus.lastSyncDirection === 'pull' && '上次：拉取'}
+                    {syncStatus.lastSyncDirection === 'full' && '上次：全量'}
+                  </span>
+                )}
+              </div>
+
+              {syncMessage && (
+                <div
+                  className={`text-sm mb-3 ${
+                    syncMessage.startsWith('✓') ? 'text-mint-700' : 'text-coral-600'
+                  }`}
+                >
+                  {syncMessage}
+                </div>
+              )}
+
+              <button
+                onClick={handleSyncNow}
+                disabled={syncStatus.isSyncing}
+                className="w-full py-2.5 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-xl text-sm font-medium hover:from-indigo-600 hover:to-purple-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {syncStatus.isSyncing ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    同步中...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw size={16} />
+                    立即同步
+                  </>
+                )}
+              </button>
+            </div>
+
+            <div className="text-xs text-gray-400 space-y-1">
+              <p>• 登录后数据自动同步至云端</p>
+              <p>• 多设备使用同一账号可共享数据</p>
+              <p>• 同步冲突以时间戳较新的数据为准</p>
+            </div>
+          </div>
+        </motion.div>
+      );
+    }
+
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.05 }}
+        className="bg-white rounded-2xl shadow-soft overflow-hidden mb-6"
+      >
+        <div className="p-4 border-b border-gray-100 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center">
+            <Cloud className="text-white" size={20} />
+          </div>
+          <div className="flex-1">
+            <h2 className="font-display font-bold text-gray-800">云端同步</h2>
+            <p className="text-xs text-gray-500">登录后自动备份数据到云端</p>
+          </div>
+        </div>
+
+        <div className="p-4">
+          <div className="flex gap-2 mb-4">
+            <button
+              onClick={() => {
+                setAuthMode('login');
+                resetForm();
+              }}
+              className={`flex-1 py-2 px-4 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2 ${
+                authMode === 'login'
+                  ? 'bg-indigo-500 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              <LogIn size={16} />
+              登录
+            </button>
+            <button
+              onClick={() => {
+                setAuthMode('register');
+                resetForm();
+              }}
+              className={`flex-1 py-2 px-4 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2 ${
+                authMode === 'register'
+                  ? 'bg-indigo-500 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              <UserPlus size={16} />
+              注册
+            </button>
+          </div>
+
+          <form
+            onSubmit={authMode === 'login' ? handleLogin : handleRegister}
+            className="space-y-3"
+          >
+            <div className="relative">
+              <User
+                size={18}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              />
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="用户名"
+                className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-all"
+              />
+            </div>
+
+            {authMode === 'register' && (
+              <div className="relative">
+                <Mail
+                  size={18}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="邮箱"
+                  className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-all"
+                />
+              </div>
+            )}
+
+            <div className="relative">
+              <Lock
+                size={18}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              />
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="密码"
+                className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-all"
+              />
+            </div>
+
+            {authMode === 'register' && (
+              <div className="relative">
+                <Lock
+                  size={18}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                />
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="确认密码"
+                  className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-all"
+                />
+              </div>
+            )}
+
+            {formError && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex items-start gap-2 p-3 bg-coral-50 border border-coral-200 rounded-xl"
+              >
+                <AlertCircle className="text-coral-500 flex-shrink-0 mt-0.5" size={16} />
+                <p className="text-sm text-coral-700">{formError}</p>
+              </motion.div>
+            )}
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full py-3.5 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-xl font-medium hover:from-indigo-600 hover:to-purple-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-200 disabled:opacity-50"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 size={18} className="animate-spin" />
+                  处理中...
+                </>
+              ) : authMode === 'login' ? (
+                <>
+                  <LogIn size={18} />
+                  登录并同步
+                </>
+              ) : (
+                <>
+                  <UserPlus size={18} />
+                  创建账号
+                </>
+              )}
+            </button>
+          </form>
+
+          <div className="mt-4 p-3 bg-indigo-50 rounded-xl">
+            <p className="text-xs text-indigo-700 space-y-1">
+              <span className="font-medium">💡 提示：</span>
+              <br />
+              • 注册后将自动创建云端存储空间
+              <br />
+              • 数据使用端到端加密存储，保障隐私
+            </p>
+          </div>
+        </div>
+      </motion.div>
+    );
+  };
+
   return (
     <div className="min-h-screen pb-24">
       <div className="max-w-lg mx-auto px-4 py-6">
@@ -93,6 +528,8 @@ export function SettingsPage() {
             个性化你的狗叫记录体验
           </p>
         </motion.div>
+
+        {renderAuthSection()}
 
         <motion.div
           initial={{ opacity: 0, y: 20 }}

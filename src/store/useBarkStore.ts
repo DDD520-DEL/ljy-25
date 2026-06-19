@@ -7,6 +7,8 @@ interface BarkState {
   records: BarkRecord[];
   dogs: DogProfile[];
   settings: AppSettings;
+  deletedRecordIds: string[];
+  deletedDogIds: string[];
   addRecord: (timestamp?: number, data?: Partial<BarkRecord>) => BarkRecord;
   updateRecord: (id: string, data: Partial<BarkRecord>) => void;
   deleteRecord: (id: string) => void;
@@ -27,6 +29,25 @@ interface BarkState {
   batchUpdateRecords: (ids: string[], data: Partial<BarkRecord>) => number;
   batchDeleteRecords: (ids: string[]) => number;
   batchAddTags: (ids: string[], tags: string[]) => number;
+  getPendingSyncData: () => {
+    records: BarkRecord[];
+    dogs: DogProfile[];
+    deletedRecordIds: string[];
+    deletedDogIds: string[];
+  };
+  markAllSynced: () => void;
+  mergeRemoteChanges: (
+    remoteRecords: BarkRecord[],
+    remoteDogs: DogProfile[],
+    remoteDeletedRecordIds: string[],
+    remoteDeletedDogIds: string[]
+  ) => { mergedRecords: number; mergedDogs: number; deletedLocal: number };
+  replaceAllData: (
+    records: BarkRecord[],
+    dogs: DogProfile[],
+    settings?: AppSettings
+  ) => void;
+  clearDeletedTracking: () => void;
 }
 
 const initialSettings: AppSettings = {
@@ -49,6 +70,8 @@ export const useBarkStore = create<BarkState>()(
       records: [],
       dogs: [],
       settings: initialSettings,
+      deletedRecordIds: [],
+      deletedDogIds: [],
 
       addRecord: (timestamp?: number, data?: Partial<BarkRecord>) => {
         const now = Date.now();
@@ -80,11 +103,22 @@ export const useBarkStore = create<BarkState>()(
       deleteRecord: (id: string) => {
         set((state) => ({
           records: state.records.filter((record) => record.id !== id),
+          deletedRecordIds: state.deletedRecordIds.includes(id)
+            ? state.deletedRecordIds
+            : [...state.deletedRecordIds, id],
         }));
       },
 
       clearAllRecords: () => {
-        set({ records: [] });
+        set((state) => ({
+          records: [],
+          deletedRecordIds: Array.from(
+            new Set([
+              ...state.deletedRecordIds,
+              ...state.records.map((r) => r.id),
+            ])
+          ),
+        }));
       },
 
       updateSettings: (settings: Partial<AppSettings>) => {
@@ -235,8 +269,11 @@ export const useBarkStore = create<BarkState>()(
       deleteDog: (id: string) => {
         set((state) => ({
           dogs: state.dogs.filter((dog) => dog.id !== id),
+          deletedDogIds: state.deletedDogIds.includes(id)
+            ? state.deletedDogIds
+            : [...state.deletedDogIds, id],
           records: state.records.map((record) =>
-            record.dogId === id ? { ...record, dogId: undefined } : record
+            record.dogId === id ? { ...record, dogId: undefined, updatedAt: Date.now() } : record
           ),
         }));
       },
@@ -261,6 +298,12 @@ export const useBarkStore = create<BarkState>()(
         const initialLength = get().records.length;
         set((state) => ({
           records: state.records.filter((record) => !idSet.has(record.id)),
+          deletedRecordIds: Array.from(
+            new Set([
+              ...state.deletedRecordIds,
+              ...ids.filter((id) => state.records.some((r) => r.id === id)),
+            ])
+          ),
         }));
         return initialLength - get().records.length;
       },
@@ -280,6 +323,112 @@ export const useBarkStore = create<BarkState>()(
         }));
         return updatedCount;
       },
+
+      getPendingSyncData: () => {
+        const state = get();
+        return {
+          records: [...state.records],
+          dogs: [...state.dogs],
+          deletedRecordIds: [...state.deletedRecordIds],
+          deletedDogIds: [...state.deletedDogIds],
+        };
+      },
+
+      markAllSynced: () => {
+        set({
+          deletedRecordIds: [],
+          deletedDogIds: [],
+        });
+      },
+
+      mergeRemoteChanges: (
+        remoteRecords: BarkRecord[],
+        remoteDogs: DogProfile[],
+        remoteDeletedRecordIds: string[],
+        remoteDeletedDogIds: string[]
+      ) => {
+        const state = get();
+        let mergedRecords = 0;
+        let mergedDogs = 0;
+        let deletedLocal = 0;
+
+        const localRecordMap = new Map(state.records.map((r) => [r.id, r]));
+        remoteRecords.forEach((remote) => {
+          const local = localRecordMap.get(remote.id);
+          if (!local) {
+            localRecordMap.set(remote.id, remote);
+            mergedRecords++;
+          } else if (remote.updatedAt > local.updatedAt) {
+            localRecordMap.set(remote.id, remote);
+            mergedRecords++;
+          }
+        });
+
+        remoteDeletedRecordIds.forEach((id) => {
+          if (localRecordMap.has(id)) {
+            localRecordMap.delete(id);
+            deletedLocal++;
+          }
+        });
+
+        const localDogMap = new Map(state.dogs.map((d) => [d.id, d]));
+        remoteDogs.forEach((remote) => {
+          const local = localDogMap.get(remote.id);
+          if (!local) {
+            localDogMap.set(remote.id, remote);
+            mergedDogs++;
+          } else if (remote.updatedAt > local.updatedAt) {
+            localDogMap.set(remote.id, remote);
+            mergedDogs++;
+          }
+        });
+
+        remoteDeletedDogIds.forEach((id) => {
+          if (localDogMap.has(id)) {
+            localDogMap.delete(id);
+            deletedLocal++;
+          }
+        });
+
+        const finalDeletedRecordIds = state.deletedRecordIds.filter(
+          (id) => !remoteDeletedRecordIds.includes(id)
+        );
+        const finalDeletedDogIds = state.deletedDogIds.filter(
+          (id) => !remoteDeletedDogIds.includes(id)
+        );
+
+        set({
+          records: Array.from(localRecordMap.values()).sort(
+            (a, b) => b.timestamp - a.timestamp
+          ),
+          dogs: Array.from(localDogMap.values()),
+          deletedRecordIds: finalDeletedRecordIds,
+          deletedDogIds: finalDeletedDogIds,
+        });
+
+        return { mergedRecords, mergedDogs, deletedLocal };
+      },
+
+      replaceAllData: (
+        records: BarkRecord[],
+        dogs: DogProfile[],
+        settings?: AppSettings
+      ) => {
+        set((state) => ({
+          records: [...records].sort((a, b) => b.timestamp - a.timestamp),
+          dogs: [...dogs],
+          settings: settings ?? state.settings,
+          deletedRecordIds: [],
+          deletedDogIds: [],
+        }));
+      },
+
+      clearDeletedTracking: () => {
+        set({
+          deletedRecordIds: [],
+          deletedDogIds: [],
+        });
+      },
     }),
     {
       name: 'bark-recorder-storage',
@@ -288,6 +437,8 @@ export const useBarkStore = create<BarkState>()(
         records: state.records,
         dogs: state.dogs,
         settings: state.settings,
+        deletedRecordIds: state.deletedRecordIds,
+        deletedDogIds: state.deletedDogIds,
       }),
       onRehydrateStorage: () => (state) => {
         if (state && !state.dogs) {
@@ -301,6 +452,12 @@ export const useBarkStore = create<BarkState>()(
         }
         if (state && state.settings.reminders && !state.settings.reminders.times) {
           state.settings.reminders.times = initialSettings.reminders.times;
+        }
+        if (state && !state.deletedRecordIds) {
+          state.deletedRecordIds = [];
+        }
+        if (state && !state.deletedDogIds) {
+          state.deletedDogIds = [];
         }
       },
     }

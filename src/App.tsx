@@ -7,9 +7,30 @@ import { ExportPage } from '@/pages/ExportPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { Navigation } from '@/components/Navigation';
 import { useReminders } from '@/hooks/useReminders';
+import { useSync } from '@/hooks/useSync';
+import { useAuthStore } from '@/store/useAuthStore';
+import { useEffect, useRef } from 'react';
 
 function AppInitializer() {
   useReminders();
+  const { pullOnStartup } = useSync();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const validateSession = useAuthStore((s) => s.validateSession);
+  const hasSyncedRef = useRef(false);
+
+  useEffect(() => {
+    const init = async () => {
+      if (isAuthenticated) {
+        const valid = await validateSession();
+        if (valid && !hasSyncedRef.current) {
+          hasSyncedRef.current = true;
+          await pullOnStartup();
+        }
+      }
+    };
+    init();
+  }, [isAuthenticated, validateSession, pullOnStartup]);
+
   return null;
 }
 
