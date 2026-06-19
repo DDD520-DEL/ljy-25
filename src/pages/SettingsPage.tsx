@@ -108,24 +108,26 @@ export function SettingsPage() {
               <h2 className="font-display font-bold text-gray-800">每日定时提醒</h2>
               <p className="text-xs text-gray-500">到时间推送通知，提醒你记录狗叫</p>
             </div>
-            <div className="relative">
-              <input
-                type="checkbox"
-                checked={reminders.enabled}
-                onChange={(e) => handleEnableReminders(e.target.checked)}
-                className="sr-only"
+            <div
+              role="switch"
+              aria-checked={reminders.enabled}
+              tabIndex={0}
+              onClick={() => handleEnableReminders(!reminders.enabled)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleEnableReminders(!reminders.enabled);
+                }
+              }}
+              className={`w-14 h-8 rounded-full transition-colors cursor-pointer relative ${
+                reminders.enabled ? 'bg-amber-500' : 'bg-gray-300'
+              }`}
+            >
+              <motion.div
+                animate={{ x: reminders.enabled ? 28 : 4 }}
+                transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                className="w-6 h-6 rounded-full bg-white shadow-md absolute top-1"
               />
-              <div
-                className={`w-14 h-8 rounded-full transition-colors cursor-pointer ${
-                  reminders.enabled ? 'bg-amber-500' : 'bg-gray-300'
-                }`}
-              >
-                <motion.div
-                  animate={{ x: reminders.enabled ? 28 : 4 }}
-                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                  className="w-6 h-6 rounded-full bg-white shadow-md absolute top-1"
-                />
-              </div>
             </div>
           </div>
 
@@ -301,26 +303,28 @@ export function SettingsPage() {
                               </div>
                               <div className="text-xs text-gray-400">点击可修改时间</div>
                             </div>
-                            <div className="relative">
-                              <input
-                                type="checkbox"
-                                checked={time.enabled}
-                                onChange={(e) =>
-                                  updateReminderTime(time.id, { enabled: e.target.checked })
+                            <div
+                              role="switch"
+                              aria-checked={time.enabled}
+                              tabIndex={0}
+                              onClick={() =>
+                                updateReminderTime(time.id, { enabled: !time.enabled })
+                              }
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  updateReminderTime(time.id, { enabled: !time.enabled });
                                 }
-                                className="sr-only"
+                              }}
+                              className={`w-11 h-6 rounded-full transition-colors cursor-pointer relative ${
+                                time.enabled ? 'bg-amber-500' : 'bg-gray-300'
+                              }`}
+                            >
+                              <motion.div
+                                animate={{ x: time.enabled ? 22 : 2 }}
+                                transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                                className="w-5 h-5 rounded-full bg-white shadow-md absolute top-0.5"
                               />
-                              <div
-                                className={`w-11 h-6 rounded-full transition-colors cursor-pointer ${
-                                  time.enabled ? 'bg-amber-500' : 'bg-gray-300'
-                                }`}
-                              >
-                                <motion.div
-                                  animate={{ x: time.enabled ? 22 : 2 }}
-                                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                                  className="w-5 h-5 rounded-full bg-white shadow-md absolute top-0.5"
-                                />
-                              </div>
                             </div>
                             <button
                               onClick={() => removeReminderTime(time.id)}
@@ -352,7 +356,7 @@ export function SettingsPage() {
             <h2 className="font-display font-bold text-gray-800">通用设置</h2>
           </div>
 
-          <label className="flex items-center justify-between p-4 hover:bg-gray-50 cursor-pointer border-b border-gray-50">
+          <div className="flex items-center justify-between p-4 hover:bg-gray-50 cursor-pointer border-b border-gray-50">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-coral-100 flex items-center justify-center">
                 <Smartphone className="text-coral-600" size={18} />
@@ -362,28 +366,30 @@ export function SettingsPage() {
                 <div className="text-xs text-gray-500">点击记录按钮时手机震动</div>
               </div>
             </div>
-            <div className="relative">
-              <input
-                type="checkbox"
-                checked={settings.vibrationEnabled}
-                onChange={(e) => updateSettings({ vibrationEnabled: e.target.checked })}
-                className="sr-only"
+            <div
+              role="switch"
+              aria-checked={settings.vibrationEnabled}
+              tabIndex={0}
+              onClick={() => updateSettings({ vibrationEnabled: !settings.vibrationEnabled })}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  updateSettings({ vibrationEnabled: !settings.vibrationEnabled });
+                }
+              }}
+              className={`w-12 h-7 rounded-full transition-colors cursor-pointer relative ${
+                settings.vibrationEnabled ? 'bg-coral-500' : 'bg-gray-300'
+              }`}
+            >
+              <motion.div
+                animate={{ x: settings.vibrationEnabled ? 22 : 2 }}
+                transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                className="w-5 h-5 rounded-full bg-white shadow-md absolute top-1"
               />
-              <div
-                className={`w-12 h-7 rounded-full transition-colors ${
-                  settings.vibrationEnabled ? 'bg-coral-500' : 'bg-gray-300'
-                }`}
-              >
-                <motion.div
-                  animate={{ x: settings.vibrationEnabled ? 22 : 2 }}
-                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                  className="w-5 h-5 rounded-full bg-white shadow-md absolute top-1"
-                />
-              </div>
             </div>
-          </label>
+          </div>
 
-          <label className="flex items-center justify-between p-4 hover:bg-gray-50 cursor-pointer">
+          <div className="flex items-center justify-between p-4 hover:bg-gray-50 cursor-pointer">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
                 <Volume2 className="text-blue-600" size={18} />
@@ -393,26 +399,28 @@ export function SettingsPage() {
                 <div className="text-xs text-gray-500">点击记录按钮时播放提示音</div>
               </div>
             </div>
-            <div className="relative">
-              <input
-                type="checkbox"
-                checked={settings.soundEnabled}
-                onChange={(e) => updateSettings({ soundEnabled: e.target.checked })}
-                className="sr-only"
+            <div
+              role="switch"
+              aria-checked={settings.soundEnabled}
+              tabIndex={0}
+              onClick={() => updateSettings({ soundEnabled: !settings.soundEnabled })}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  updateSettings({ soundEnabled: !settings.soundEnabled });
+                }
+              }}
+              className={`w-12 h-7 rounded-full transition-colors cursor-pointer relative ${
+                settings.soundEnabled ? 'bg-blue-500' : 'bg-gray-300'
+              }`}
+            >
+              <motion.div
+                animate={{ x: settings.soundEnabled ? 22 : 2 }}
+                transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                className="w-5 h-5 rounded-full bg-white shadow-md absolute top-1"
               />
-              <div
-                className={`w-12 h-7 rounded-full transition-colors ${
-                  settings.soundEnabled ? 'bg-blue-500' : 'bg-gray-300'
-                }`}
-              >
-                <motion.div
-                  animate={{ x: settings.soundEnabled ? 22 : 2 }}
-                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                  className="w-5 h-5 rounded-full bg-white shadow-md absolute top-1"
-                />
-              </div>
             </div>
-          </label>
+          </div>
         </motion.div>
 
         <motion.div
