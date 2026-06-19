@@ -20,6 +20,7 @@ import { TimePeriodSelector } from '@/components/TimePeriodSelector';
 import { ComparisonBarChart } from '@/components/ComparisonBarChart';
 import { ComparisonStatsCard } from '@/components/ComparisonStatsCard';
 import { NearbyHeatmap } from '@/components/NearbyHeatmap';
+import { DogActivityRanking } from '@/components/DogActivityRanking';
 import { useStats } from '@/hooks/useStats';
 import { useComparisonStats } from '@/hooks/useComparisonStats';
 import { useLocationSharing } from '@/hooks/useLocationSharing';
@@ -52,6 +53,7 @@ export function AnalysisPage() {
     peakDayInfo,
     tagRecordDistribution,
     dogStats,
+    dogRanking,
   } = useStats(selectedDogId);
 
   const {
@@ -625,11 +627,25 @@ export function AnalysisPage() {
               </motion.div>
             )}
 
-            {summaryStats.recordsByDay.length > 0 && (
+            {dogRanking.length > 0 && selectedDogId === undefined && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 1.1 }}
+                className="mb-6"
+              >
+                <DogActivityRanking
+                  rankingData={dogRanking}
+                  totalRecords={summaryStats.totalRecords}
+                />
+              </motion.div>
+            )}
+
+            {summaryStats.recordsByDay.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 1.25 }}
                 className="mt-6 bg-white rounded-2xl p-5 shadow-soft"
               >
                 <h3 className="font-display text-lg font-bold text-gray-800 mb-4">
@@ -641,7 +657,7 @@ export function AnalysisPage() {
                       key={day.date}
                       initial={{ opacity: 0, x: -20 }}
                       animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 1.2 + index * 0.1 }}
+                      transition={{ delay: 1.35 + index * 0.1 }}
                       className="flex items-center gap-3"
                     >
                       <div className="w-20 text-sm text-gray-600 flex-shrink-0">
@@ -654,7 +670,7 @@ export function AnalysisPage() {
                           animate={{
                             width: `${(day.count / Math.max(...summaryStats.recordsByDay.map((d) => d.count))) * 100}%`,
                           }}
-                          transition={{ delay: 1.3 + index * 0.1, duration: 0.5 }}
+                          transition={{ delay: 1.45 + index * 0.1, duration: 0.5 }}
                         />
                       </div>
                       <div className="w-10 text-right text-sm font-medium text-amber-700">

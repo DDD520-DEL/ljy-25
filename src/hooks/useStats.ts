@@ -111,6 +111,17 @@ export function useStats(dogId?: string) {
     });
   }, [dogs, records]);
 
+  const dogRanking = useMemo(() => {
+    return dogStats
+      .filter((ds) => ds.recordCount > 0)
+      .sort((a, b) => b.recordCount - a.recordCount)
+      .map((ds, index) => ({
+        dog: ds.dog,
+        recordCount: ds.recordCount,
+        rank: index + 1,
+      }));
+  }, [dogStats]);
+
   const weekComparison = useMemo(() => {
     const thisWeekRange = getDateRangeForPreset('thisWeek');
     const lastWeekRange = getDateRangeForPreset('lastWeek');
@@ -154,6 +165,7 @@ export function useStats(dogId?: string) {
     allTags,
     hasData,
     dogStats,
+    dogRanking,
     weekComparison,
   };
 }
