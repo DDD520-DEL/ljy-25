@@ -289,3 +289,109 @@ export function getTimePeriod(hour: number): string {
   if (hour >= 18 && hour < 22) return '晚间';
   return '深夜';
 }
+
+export interface AdminUser {
+  id: string;
+  username: string;
+  email: string;
+  role: 'super_admin' | 'admin';
+  token: string;
+  createdAt: number;
+  lastLoginAt: number;
+}
+
+export interface AdminDashboardStats {
+  totalUsers: number;
+  totalRecords: number;
+  activeUsersToday: number;
+  activeUsersYesterday: number;
+  newUsersToday: number;
+  newUsersYesterday: number;
+  recordsToday: number;
+  recordsYesterday: number;
+  averageRecordsPerUser: number;
+}
+
+export interface DailyActiveData {
+  date: string;
+  timestamp: number;
+  activeUsers: number;
+  newUsers: number;
+  totalRecords: number;
+}
+
+export interface RegionData {
+  province: string;
+  city: string;
+  userCount: number;
+  recordCount: number;
+  lat: number;
+  lng: number;
+}
+
+export interface AdminDashboardData {
+  stats: AdminDashboardStats;
+  dailyTrend: DailyActiveData[];
+  regionDistribution: RegionData[];
+  lastUpdated: number;
+  dataFrom: number;
+  dataTo: number;
+}
+
+export interface AdminDateRange {
+  start: number;
+  end: number;
+  label: string;
+}
+
+export const ADMIN_DATE_RANGE_OPTIONS: { key: string; label: string; getRange: () => AdminDateRange }[] = [
+  {
+    key: 'today',
+    label: '今日',
+    getRange: () => {
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+      return { start, end: Date.now(), label: '今日' };
+    },
+  },
+  {
+    key: 'yesterday',
+    label: '昨日',
+    getRange: () => {
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1).getTime();
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() - 1;
+      return { start, end, label: '昨日' };
+    },
+  },
+  {
+    key: 'last7days',
+    label: '近7天',
+    getRange: () => {
+      const now = new Date();
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() - 1 + 86400000;
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6).getTime();
+      return { start, end, label: '近7天' };
+    },
+  },
+  {
+    key: 'last30days',
+    label: '近30天',
+    getRange: () => {
+      const now = new Date();
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() - 1 + 86400000;
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29).getTime();
+      return { start, end, label: '近30天' };
+    },
+  },
+  {
+    key: 'custom',
+    label: '自定义',
+    getRange: () => {
+      const now = new Date();
+      const end = Date.now();
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6).getTime();
+      return { start, end, label: '自定义' };
+    },
+  },
+];

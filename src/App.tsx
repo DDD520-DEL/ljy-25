@@ -1,14 +1,17 @@
-import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { HomePage } from '@/pages/HomePage';
 import { AnalysisPage } from '@/pages/AnalysisPage';
 import { RecordsPage } from '@/pages/RecordsPage';
 import { ExportPage } from '@/pages/ExportPage';
 import { SettingsPage } from '@/pages/SettingsPage';
+import { AdminLoginPage } from '@/pages/AdminLoginPage';
+import { AdminDashboardPage } from '@/pages/AdminDashboardPage';
 import { Navigation } from '@/components/Navigation';
 import { useReminders } from '@/hooks/useReminders';
 import { useSync } from '@/hooks/useSync';
 import { useAuthStore } from '@/store/useAuthStore';
+import { useAdminStore } from '@/store/useAdminStore';
 import { useEffect, useRef } from 'react';
 
 function AppInitializer() {
@@ -35,8 +38,34 @@ function AppInitializer() {
   return null;
 }
 
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const isAdminAuthenticated = useAdminStore((s) => s.isAuthenticated);
+  if (!isAdminAuthenticated) {
+    return <Navigate to="/admin/login" replace />;
+  }
+  return <>{children}</>;
+}
+
 function AnimatedRoutes() {
   const location = useLocation();
+  const isAdminRoute = location.pathname.startsWith('/admin');
+
+  if (isAdminRoute) {
+    return (
+      <Routes location={location} key={location.pathname}>
+        <Route path="/admin/login" element={<AdminLoginPage />} />
+        <Route
+          path="/admin/dashboard"
+          element={
+            <AdminRoute>
+              <AdminDashboardPage />
+            </AdminRoute>
+          }
+        />
+        <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
+      </Routes>
+    );
+  }
 
   return (
     <AnimatePresence mode="wait">
@@ -111,14 +140,27 @@ function AnimatedRoutes() {
   );
 }
 
+function AppContent() {
+  const location = useLocation();
+  const isAdminRoute = location.pathname.startsWith('/admin');
+
+  if (isAdminRoute) {
+    return <AnimatedRoutes />;
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-cream-50 to-cream-100">
+      <AnimatedRoutes />
+      <Navigation />
+    </div>
+  );
+}
+
 export default function App() {
   return (
     <Router>
       <AppInitializer />
-      <div className="min-h-screen bg-gradient-to-br from-cream-50 to-cream-100">
-        <AnimatedRoutes />
-        <Navigation />
-      </div>
+      <AppContent />
     </Router>
   );
 }
