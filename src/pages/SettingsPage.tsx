@@ -15,7 +15,6 @@ import {
   User,
   LogOut,
   Cloud,
-  CloudOff,
   CloudUpload,
   Loader2,
   RefreshCw,
@@ -23,6 +22,7 @@ import {
   Lock,
   UserPlus,
   LogIn,
+  Info,
 } from 'lucide-react';
 import { useBarkStore } from '@/store/useBarkStore';
 import { useReminders } from '@/hooks/useReminders';
@@ -218,33 +218,33 @@ export function SettingsPage() {
           <div className="p-4">
             <div
               className={`rounded-xl p-4 mb-4 ${
-                syncStatus.lastError
-                  ? 'bg-coral-50 border border-coral-200'
-                  : syncStatus.isSyncing
+                syncStatus.isSyncing
                   ? 'bg-blue-50 border border-blue-200'
-                  : syncStatus.lastSyncSuccess && syncStatus.lastSyncAt > 0
+                  : syncStatus.lastSyncAt > 0 && syncStatus.lastSyncSuccess
                   ? 'bg-mint-50 border border-mint-200'
+                  : syncStatus.lastSyncAt > 0
+                  ? 'bg-amber-50 border border-amber-200'
                   : 'bg-gray-50 border border-gray-200'
               }`}
             >
               <div className="flex items-center gap-3 mb-3">
                 <div
                   className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                    syncStatus.lastError
-                      ? 'bg-coral-100'
-                      : syncStatus.isSyncing
+                    syncStatus.isSyncing
                       ? 'bg-blue-100'
-                      : syncStatus.lastSyncSuccess && syncStatus.lastSyncAt > 0
+                      : syncStatus.lastSyncAt > 0 && syncStatus.lastSyncSuccess
                       ? 'bg-mint-100'
+                      : syncStatus.lastSyncAt > 0
+                      ? 'bg-amber-100'
                       : 'bg-gray-100'
                   }`}
                 >
                   {syncStatus.isSyncing ? (
                     <Loader2 className="text-blue-600 animate-spin" size={20} />
-                  ) : syncStatus.lastError ? (
-                    <CloudOff className="text-coral-600" size={20} />
-                  ) : syncStatus.lastSyncSuccess && syncStatus.lastSyncAt > 0 ? (
+                  ) : syncStatus.lastSyncAt > 0 && syncStatus.lastSyncSuccess ? (
                     <Check className="text-mint-600" size={20} />
+                  ) : syncStatus.lastSyncAt > 0 ? (
+                    <AlertCircle className="text-amber-600" size={20} />
                   ) : (
                     <Cloud className="text-gray-500" size={20} />
                   )}
@@ -252,37 +252,41 @@ export function SettingsPage() {
                 <div className="flex-1 min-w-0">
                   <div
                     className={`font-medium ${
-                      syncStatus.lastError
-                        ? 'text-coral-800'
-                        : syncStatus.isSyncing
+                      syncStatus.isSyncing
                         ? 'text-blue-800'
-                        : syncStatus.lastSyncSuccess && syncStatus.lastSyncAt > 0
+                        : syncStatus.lastSyncAt > 0 && syncStatus.lastSyncSuccess
                         ? 'text-mint-800'
+                        : syncStatus.lastSyncAt > 0
+                        ? 'text-amber-800'
                         : 'text-gray-700'
                     }`}
                   >
-                    {syncStatus.isSyncing
-                      ? syncStatus.currentSyncType === 'push'
-                        ? '正在上传本地数据...'
-                        : syncStatus.currentSyncType === 'pull'
-                        ? '正在拉取云端数据...'
-                        : syncStatus.currentSyncType === 'full'
-                        ? '正在全量同步...'
-                        : '正在同步数据...'
-                      : syncStatus.lastError
-                      ? '同步遇到问题'
-                      : syncStatus.lastSyncSuccess && syncStatus.lastSyncAt > 0
-                      ? '云端同步正常'
+                    {syncStatus.isSyncing && syncStatus.loginSyncPhase === 'pushing'
+                      ? '正在上传本地数据...'
+                      : syncStatus.isSyncing && syncStatus.loginSyncPhase === 'pulling'
+                      ? '正在拉取云端数据...'
+                      : syncStatus.isSyncing && syncStatus.currentSyncType === 'push'
+                      ? '正在上传本地数据...'
+                      : syncStatus.isSyncing && syncStatus.currentSyncType === 'pull'
+                      ? '正在拉取云端数据...'
+                      : syncStatus.isSyncing && syncStatus.currentSyncType === 'full'
+                      ? '正在全量同步...'
+                      : syncStatus.isSyncing
+                      ? '正在同步数据...'
+                      : syncStatus.lastSyncAt > 0
+                      ? syncStatus.lastSyncDirection === 'login'
+                        ? '登录同步已完成'
+                        : '云端同步正常'
                       : '尚未同步过数据'}
                   </div>
                   <div
                     className={`text-xs ${
-                      syncStatus.lastError
-                        ? 'text-coral-600'
-                        : syncStatus.isSyncing
+                      syncStatus.isSyncing
                         ? 'text-blue-600'
-                        : syncStatus.lastSyncSuccess && syncStatus.lastSyncAt > 0
+                        : syncStatus.lastSyncAt > 0 && syncStatus.lastSyncSuccess
                         ? 'text-mint-600'
+                        : syncStatus.lastSyncAt > 0
+                        ? 'text-amber-600'
                         : 'text-gray-500'
                     }`}
                   >
@@ -290,8 +294,6 @@ export function SettingsPage() {
                       ? syncStatus.queueSize > 1
                         ? `队列中还有 ${syncStatus.queueSize - 1} 个任务`
                         : '请稍候'
-                      : syncStatus.lastError
-                      ? syncStatus.lastError
                       : syncStatus.lastSyncAt > 0
                       ? `上次同步：${formatDateTime(syncStatus.lastSyncAt)}`
                       : '登录后自动开始同步'}
@@ -299,9 +301,159 @@ export function SettingsPage() {
                 </div>
               </div>
 
-              {syncStatus.lastSyncMessage &&
+              {syncStatus.isSyncing && (
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  <div
+                    className={`text-center p-2 rounded-lg ${
+                      syncStatus.loginSyncPhase === 'pushing' ||
+                      syncStatus.currentSyncType === 'push'
+                        ? 'bg-blue-100 text-blue-700'
+                        : syncStatus.loginSyncPhase === 'pulling' ||
+                          syncStatus.loginSyncPhase === 'done'
+                        ? 'bg-mint-100 text-mint-700'
+                        : syncStatus.currentSyncType === 'pull' ||
+                          syncStatus.currentSyncType === 'full'
+                        ? 'bg-mint-100 text-mint-700'
+                        : 'bg-gray-100 text-gray-500'
+                    }`}
+                  >
+                    <div className="text-xs font-medium">① 上传本地</div>
+                    <div className="text-xs mt-0.5">
+                      {syncStatus.loginSyncPhase === 'pushing' ||
+                      syncStatus.currentSyncType === 'push'
+                        ? '进行中...'
+                        : '等待中'}
+                    </div>
+                  </div>
+                  <div
+                    className={`text-center p-2 rounded-lg ${
+                      syncStatus.loginSyncPhase === 'pulling' ||
+                      syncStatus.currentSyncType === 'pull'
+                        ? 'bg-blue-100 text-blue-700'
+                        : syncStatus.loginSyncPhase === 'done' ||
+                          syncStatus.currentSyncType === 'full'
+                        ? 'bg-mint-100 text-mint-700'
+                        : 'bg-gray-100 text-gray-500'
+                    }`}
+                  >
+                    <div className="text-xs font-medium">② 拉取云端</div>
+                    <div className="text-xs mt-0.5">
+                      {syncStatus.loginSyncPhase === 'pulling' ||
+                      syncStatus.currentSyncType === 'pull'
+                        ? '进行中...'
+                        : syncStatus.loginSyncPhase === 'pushing'
+                        ? '等待中'
+                        : syncStatus.currentSyncType === 'push'
+                        ? '等待中'
+                        : '等待中'}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {!syncStatus.isSyncing &&
+                syncStatus.lastLoginSyncResult &&
+                syncStatus.lastSyncDirection === 'login' && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="space-y-2 mb-3"
+                  >
+                    <div
+                      className={`p-2.5 rounded-lg ${
+                        syncStatus.lastLoginSyncResult.pushSuccess
+                          ? 'bg-mint-100'
+                          : 'bg-coral-100'
+                      }`}
+                    >
+                      <div
+                        className={`text-xs font-medium flex items-center gap-1.5 ${
+                          syncStatus.lastLoginSyncResult.pushSuccess
+                            ? 'text-mint-700'
+                            : 'text-coral-700'
+                        }`}
+                      >
+                        {syncStatus.lastLoginSyncResult.pushSuccess ? (
+                          <Check size={14} />
+                        ) : (
+                          <AlertCircle size={14} />
+                        )}
+                        步骤①：上传本地数据
+                      </div>
+                      <div
+                        className={`text-xs mt-1 ${
+                          syncStatus.lastLoginSyncResult.pushSuccess
+                            ? 'text-mint-600'
+                            : 'text-coral-600'
+                        }`}
+                      >
+                        {syncStatus.lastLoginSyncResult.pushMessage}
+                        {syncStatus.lastLoginSyncResult.pushError &&
+                          !syncStatus.lastLoginSyncResult.pushSuccess && (
+                            <span className="block mt-1 font-medium">
+                              错误原因：{syncStatus.lastLoginSyncResult.pushError}
+                            </span>
+                          )}
+                      </div>
+                    </div>
+
+                    <div
+                      className={`p-2.5 rounded-lg ${
+                        syncStatus.lastLoginSyncResult.pullSuccess
+                          ? 'bg-mint-100'
+                          : 'bg-coral-100'
+                      }`}
+                    >
+                      <div
+                        className={`text-xs font-medium flex items-center gap-1.5 ${
+                          syncStatus.lastLoginSyncResult.pullSuccess
+                            ? 'text-mint-700'
+                            : 'text-coral-700'
+                        }`}
+                      >
+                        {syncStatus.lastLoginSyncResult.pullSuccess ? (
+                          <Check size={14} />
+                        ) : (
+                          <AlertCircle size={14} />
+                        )}
+                        步骤②：拉取云端数据
+                      </div>
+                      <div
+                        className={`text-xs mt-1 ${
+                          syncStatus.lastLoginSyncResult.pullSuccess
+                            ? 'text-mint-600'
+                            : 'text-coral-600'
+                        }`}
+                      >
+                        {syncStatus.lastLoginSyncResult.pullMessage}
+                        {syncStatus.lastLoginSyncResult.pullError &&
+                          !syncStatus.lastLoginSyncResult.pullSuccess && (
+                            <span className="block mt-1 font-medium">
+                              错误原因：{syncStatus.lastLoginSyncResult.pullError}
+                            </span>
+                          )}
+                      </div>
+                    </div>
+
+                    {!syncStatus.lastLoginSyncResult.pushSuccess &&
+                      syncStatus.lastLoginSyncResult.pullSuccess && (
+                        <div className="p-2.5 rounded-lg bg-amber-100 border border-amber-200">
+                          <div className="text-xs font-medium text-amber-700 flex items-center gap-1.5">
+                            <Info size={14} />
+                            提示
+                          </div>
+                          <div className="text-xs mt-1 text-amber-600">
+                            云端数据已拉取成功，您可以看到云端已有记录。本地数据未上传成功，您可以点击下方「立即同步」重试上传。
+                          </div>
+                        </div>
+                      )}
+                  </motion.div>
+                )}
+
+              {!syncStatus.isSyncing &&
+                syncStatus.lastSyncMessage &&
                 syncStatus.lastSyncAt > 0 &&
-                !syncStatus.isSyncing && (
+                syncStatus.lastSyncDirection !== 'login' && (
                   <motion.div
                     initial={{ opacity: 0, y: -5 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -328,6 +480,7 @@ export function SettingsPage() {
                     {syncStatus.lastSyncDirection === 'push' && '上次：上传'}
                     {syncStatus.lastSyncDirection === 'pull' && '上次：拉取'}
                     {syncStatus.lastSyncDirection === 'full' && '上次：全量'}
+                    {syncStatus.lastSyncDirection === 'login' && '上次：登录同步'}
                   </span>
                 )}
                 {syncStatus.queueSize > 0 && syncStatus.isSyncing && (
@@ -395,8 +548,8 @@ export function SettingsPage() {
             </div>
 
             <div className="text-xs text-gray-400 space-y-1">
-              <p>• 登录后自动上传本地记录至云端</p>
-              <p>• 每次打开应用自动拉取云端增量数据</p>
+              <p>• 登录后自动上传并拉取云端数据</p>
+              <p>• 即使上传失败，也会自动拉取云端数据</p>
               <p>• 同步冲突以时间戳较新的数据为准</p>
             </div>
           </div>

@@ -31,6 +31,9 @@ export function useSync() {
   const setSyncError = useAuthStore((s) => s.setSyncError);
   const setPendingChanges = useAuthStore((s) => s.setPendingChanges);
   const setJustLoggedIn = useAuthStore((s) => s.setJustLoggedIn);
+  const setLoginSyncPhase = useAuthStore((s) => s.setLoginSyncPhase);
+  const setLastLoginSyncResult = useAuthStore((s) => s.setLastLoginSyncResult);
+  const appendLoginSyncResult = useAuthStore((s) => s.appendLoginSyncResult);
   const logout = useAuthStore((s) => s.logout);
 
   const getPendingSyncData = useBarkStore((s) => s.getPendingSyncData);
@@ -130,49 +133,140 @@ export function useSync() {
     return { serverTime: response.serverTime, stats };
   }, [user, lastSyncAt, mergeRemoteChanges]);
 
-  const pushOnLogin = useCallback(async (): Promise<SyncResult> => {
+  const syncOnLogin = useCallback(async (): Promise<SyncResult> => {
     if (!isAuthenticated || !user) {
       return { success: false, message: '未登录', stats: emptyStats };
     }
 
     return enqueueSync(async () => {
+      setLoginSyncPhase('pushing');
+      setLastLoginSyncResult(null);
+
+      let pushServerTime = 0;
+      let pushStats: SyncStats = { ...emptyStats };
+      let pushSuccess = true;
+      let pushMessage = '';
+      let pushError: string | undefined;
+
       try {
-        const { serverTime, stats } = await pushLocalChanges();
-        const totalPushed = stats.recordsPushed + stats.dogsPushed;
-        const message =
+        const result = await pushLocalChanges();
+        pushServerTime = result.serverTime;
+        pushStats = result.stats;
+        const totalPushed = pushStats.recordsPushed + pushStats.dogsPushed;
+        pushMessage =
           totalPushed > 0
-            ? `成功上传 ${stats.recordsPushed} 条记录、${stats.dogsPushed} 只狗狗档案`
+            ? `成功上传 ${pushStats.recordsPushed} 条记录、${pushStats.dogsPushed} 只狗狗档案`
             : '本地数据已是最新，无需上传';
-
-        setLastSync('push', serverTime, stats, message);
-        updatePendingCount();
-        setJustLoggedIn(false);
-
-        return { success: true, message, stats, serverTime };
+        appendLoginSyncResult('push', true, pushMessage);
       } catch (error) {
-        const err = error as Error;
-        const isAuthErr = await handleAuthError(err);
-        if (!isAuthErr) {
-          setSyncError(err.message || '上传失败');
+        pushSuccess = false;
+        pushError = error instanceof Error ? error.message : '上传失败';
+        pushMessage = pushError;
+        appendLoginSyncResult('push', false, pushMessage, pushError);
+
+        const isAuthErr = await handleAuthError(error as Error);
+        if (isAuthErr) {
+          setLoginSyncPhase('done');
+          setJustLoggedIn(false);
+          return {
+            success: false,
+            message: pushError,
+            stats: pushStats,
+          };
         }
-        return {
-          success: false,
-          message: err.message || '上传失败',
-          stats: emptyStats,
-        };
       }
+
+      setLoginSyncPhase('pulling');
+
+      let pullServerTime = 0;
+      let pullStats: SyncStats = { ...emptyStats };
+      let pullSuccess = true;
+      let pullMessage = '';
+      let pullError: string | undefined;
+
+      try {
+        const result = await pullRemoteChanges();
+        pullServerTime = result.serverTime;
+        pullStats = result.stats;
+        const totalChanged =
+          pullStats.recordsMerged + pullStats.dogsMerged + pullStats.deletedLocal;
+        pullMessage =
+          totalChanged > 0
+            ? `从云端拉取：新增/更新 ${pullStats.recordsMerged + pullStats.dogsMerged} 项，清理 ${pullStats.deletedLocal} 项`
+            : '云端数据已是最新，无需拉取';
+        appendLoginSyncResult('pull', true, pullMessage);
+      } catch (error) {
+        pullSuccess = false;
+        pullError = error instanceof Error ? error.message : '拉取失败';
+        pullMessage = pullError;
+        appendLoginSyncResult('pull', false, pullMessage, pullError);
+        await handleAuthError(error as Error);
+      }
+
+      setLoginSyncPhase('done');
+
+      const combinedStats: SyncStats = {
+        ...pushStats,
+        recordsPulled: pullStats.recordsPulled,
+        dogsPulled: pullStats.dogsPulled,
+        recordsMerged: pullStats.recordsMerged,
+        dogsMerged: pullStats.dogsMerged,
+        deletedLocal: pullStats.deletedLocal,
+      };
+
+      const serverTime = Math.max(
+        pushServerTime || Date.now(),
+        pullServerTime || Date.now()
+      );
+
+      const overallSuccess = pushSuccess || pullSuccess;
+      const parts: string[] = [];
+      if (pushSuccess) {
+        const p = pushStats.recordsPushed + pushStats.dogsPushed;
+        if (p > 0) parts.push(`上传 ${p} 项`);
+        else parts.push('无需上传');
+      } else {
+        parts.push(`上传失败：${pushError || '未知原因'}`);
+      }
+      if (pullSuccess) {
+        const m = pullStats.recordsMerged + pullStats.dogsMerged;
+        if (m > 0) parts.push(`拉取/合并 ${m} 项`);
+        else parts.push('无需拉取');
+      } else {
+        parts.push(`拉取失败：${pullError || '未知原因'}`);
+      }
+
+      const finalMessage = parts.join('；');
+
+      setLastSync('login', serverTime, combinedStats, finalMessage, overallSuccess);
+      updatePendingCount();
+      setJustLoggedIn(false);
+
+      return {
+        success: overallSuccess,
+        message: finalMessage,
+        stats: combinedStats,
+        serverTime,
+      };
     }, 'push');
   }, [
     isAuthenticated,
     user,
     enqueueSync,
     pushLocalChanges,
+    pullRemoteChanges,
+    appendLoginSyncResult,
+    handleAuthError,
     setLastSync,
     updatePendingCount,
     setJustLoggedIn,
-    handleAuthError,
-    setSyncError,
+    setLoginSyncPhase,
+    setLastLoginSyncResult,
   ]);
+
+  const pushOnLogin = useCallback(async (): Promise<SyncResult> => {
+    return syncOnLogin();
+  }, [syncOnLogin]);
 
   const pullOnStartup = useCallback(async (): Promise<SyncResult> => {
     if (!isAuthenticated || !user) {

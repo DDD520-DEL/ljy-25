@@ -18,9 +18,18 @@ export interface SyncStats {
   deletedLocal: number;
 }
 
+export interface SyncPhaseResult {
+  pushSuccess: boolean;
+  pushMessage: string;
+  pushError?: string;
+  pullSuccess: boolean;
+  pullMessage: string;
+  pullError?: string;
+}
+
 export interface SyncStatus {
   lastSyncAt: number;
-  lastSyncDirection: 'push' | 'pull' | 'full' | null;
+  lastSyncDirection: 'push' | 'pull' | 'full' | 'login' | null;
   lastSyncSuccess: boolean;
   lastSyncMessage: string;
   pendingChanges: number;
@@ -30,6 +39,8 @@ export interface SyncStatus {
   lastSyncStats: SyncStats;
   queueSize: number;
   justLoggedIn: boolean;
+  loginSyncPhase: 'none' | 'pushing' | 'pulling' | 'done';
+  lastLoginSyncResult: SyncPhaseResult | null;
 }
 
 export interface SyncRecord<T> {

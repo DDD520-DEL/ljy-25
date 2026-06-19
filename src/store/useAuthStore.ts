@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { User, SyncStatus, SyncStats } from '@/types';
+import { User, SyncStatus, SyncStats, SyncPhaseResult } from '@/types';
 import * as syncService from '@/services/syncService';
 
 interface AuthState {
@@ -23,14 +23,23 @@ interface AuthState {
     type: 'push' | 'pull' | 'full' | null
   ) => void;
   setLastSync: (
-    direction: 'push' | 'pull' | 'full',
+    direction: 'push' | 'pull' | 'full' | 'login',
     serverTime: number,
     stats: Partial<SyncStats>,
-    message: string
+    message: string,
+    success?: boolean
   ) => void;
   setSyncError: (error: string | undefined) => void;
   setPendingChanges: (count: number) => void;
   setJustLoggedIn: (value: boolean) => void;
+  setLoginSyncPhase: (phase: 'none' | 'pushing' | 'pulling' | 'done') => void;
+  setLastLoginSyncResult: (result: SyncPhaseResult | null) => void;
+  appendLoginSyncResult: (
+    phase: 'push' | 'pull',
+    success: boolean,
+    message: string,
+    error?: string
+  ) => void;
   clearError: () => void;
 }
 
@@ -56,6 +65,8 @@ const initialSyncStatus: SyncStatus = {
   lastSyncStats: initialSyncStats,
   queueSize: 0,
   justLoggedIn: false,
+  loginSyncPhase: 'none',
+  lastLoginSyncResult: null,
 };
 
 export const useAuthStore = create<AuthState>()(
@@ -81,6 +92,8 @@ export const useAuthStore = create<AuthState>()(
             syncStatus: {
               ...state.syncStatus,
               justLoggedIn: true,
+              loginSyncPhase: 'none',
+              lastLoginSyncResult: null,
             },
           }));
         } catch (err) {
@@ -105,6 +118,8 @@ export const useAuthStore = create<AuthState>()(
             syncStatus: {
               ...state.syncStatus,
               justLoggedIn: true,
+              loginSyncPhase: 'none',
+              lastLoginSyncResult: null,
             },
           }));
         } catch (err) {
@@ -214,23 +229,24 @@ export const useAuthStore = create<AuthState>()(
       },
 
       setLastSync: (
-        direction: 'push' | 'pull' | 'full',
+        direction: 'push' | 'pull' | 'full' | 'login',
         serverTime: number,
         stats: Partial<SyncStats>,
-        message: string
+        message: string,
+        success = true
       ) => {
         set((state) => ({
           syncStatus: {
             ...state.syncStatus,
             lastSyncAt: serverTime,
             lastSyncDirection: direction,
-            lastSyncSuccess: true,
+            lastSyncSuccess: success,
             lastSyncMessage: message,
             lastSyncStats: {
               ...state.syncStatus.lastSyncStats,
               ...stats,
             },
-            lastError: undefined,
+            lastError: success ? undefined : state.syncStatus.lastError,
           },
         }));
       },
@@ -258,6 +274,52 @@ export const useAuthStore = create<AuthState>()(
         }));
       },
 
+      setLoginSyncPhase: (phase: 'none' | 'pushing' | 'pulling' | 'done') => {
+        set((state) => ({
+          syncStatus: { ...state.syncStatus, loginSyncPhase: phase },
+        }));
+      },
+
+      setLastLoginSyncResult: (result: SyncPhaseResult | null) => {
+        set((state) => ({
+          syncStatus: { ...state.syncStatus, lastLoginSyncResult: result },
+        }));
+      },
+
+      appendLoginSyncResult: (
+        phase: 'push' | 'pull',
+        success: boolean,
+        message: string,
+        error?: string
+      ) => {
+        set((state) => {
+          const current = state.syncStatus.lastLoginSyncResult || {
+            pushSuccess: true,
+            pushMessage: '',
+            pullSuccess: true,
+            pullMessage: '',
+          };
+
+          const updated: SyncPhaseResult = { ...current };
+          if (phase === 'push') {
+            updated.pushSuccess = success;
+            updated.pushMessage = message;
+            updated.pushError = error;
+          } else {
+            updated.pullSuccess = success;
+            updated.pullMessage = message;
+            updated.pullError = error;
+          }
+
+          return {
+            syncStatus: {
+              ...state.syncStatus,
+              lastLoginSyncResult: updated,
+            },
+          };
+        });
+      },
+
       clearError: () => {
         set({ error: null });
       },
@@ -274,6 +336,7 @@ export const useAuthStore = create<AuthState>()(
           currentSyncType: null,
           queueSize: 0,
           justLoggedIn: false,
+          loginSyncPhase: 'none',
         },
       }),
       onRehydrateStorage: () => (state) => {
@@ -282,6 +345,7 @@ export const useAuthStore = create<AuthState>()(
           state.syncStatus.currentSyncType = null;
           state.syncStatus.queueSize = 0;
           state.syncStatus.justLoggedIn = false;
+          state.syncStatus.loginSyncPhase = 'none';
           state.isLoading = false;
           state.error = null;
           state.syncQueue = Promise.resolve();
