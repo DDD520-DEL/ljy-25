@@ -80,6 +80,63 @@ export interface AppSettings {
 
 export type DogMood = 'happy' | 'neutral' | 'confused' | 'sad' | 'tired';
 
+export type TimePeriodPreset = 'thisWeek' | 'lastWeek' | 'thisMonth' | 'lastMonth' | 'custom';
+
+export interface DateRange {
+  start: number;
+  end: number;
+  label: string;
+}
+
+export interface TimePeriodOption {
+  key: TimePeriodPreset;
+  label: string;
+}
+
+export const TIME_PERIOD_OPTIONS: TimePeriodOption[] = [
+  { key: 'thisWeek', label: '本周' },
+  { key: 'lastWeek', label: '上周' },
+  { key: 'thisMonth', label: '本月' },
+  { key: 'lastMonth', label: '上月' },
+  { key: 'custom', label: '自定义' },
+];
+
+export interface ComparisonStats {
+  period1: {
+    summary: SummaryStats;
+    hourly: HourlyStats[];
+    peakHourInfo: {
+      hour: number;
+      label: string;
+      period: string;
+      count: number;
+    } | null;
+    peakDayInfo: {
+      day: number;
+      label: string;
+      fullLabel: string;
+    } | null;
+  };
+  period2: {
+    summary: SummaryStats;
+    hourly: HourlyStats[];
+    peakHourInfo: {
+      hour: number;
+      label: string;
+      period: string;
+      count: number;
+    } | null;
+    peakDayInfo: {
+      day: number;
+      label: string;
+      fullLabel: string;
+    } | null;
+  };
+  period1Label: string;
+  period2Label: string;
+  maxHourlyCount: number;
+}
+
 export const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'] as const;
 export const WEEKDAY_SHORT = ['日', '一', '二', '三', '四', '五', '六'] as const;
 

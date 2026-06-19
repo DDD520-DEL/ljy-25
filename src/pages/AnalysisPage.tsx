@@ -7,17 +7,32 @@ import {
   TrendingUp,
   AlertTriangle,
   Dog,
+  GitCompare,
+  BarChart2,
+  ArrowRightLeft,
 } from 'lucide-react';
 import { HourlyChart } from '@/components/HourlyChart';
 import { WeeklyHeatmap } from '@/components/WeeklyHeatmap';
 import { StatsCard } from '@/components/StatsCard';
 import { TagPieChart } from '@/components/TagPieChart';
+import { TimePeriodSelector } from '@/components/TimePeriodSelector';
+import { ComparisonBarChart } from '@/components/ComparisonBarChart';
+import { ComparisonStatsCard } from '@/components/ComparisonStatsCard';
 import { useStats } from '@/hooks/useStats';
-import { getTimePeriod } from '@/types';
+import { useComparisonStats } from '@/hooks/useComparisonStats';
+import { getTimePeriod, TimePeriodPreset } from '@/types';
 import { formatFriendlyDate } from '@/utils/date';
 
 export function AnalysisPage() {
   const [selectedDogId, setSelectedDogId] = useState<string | undefined>(undefined);
+  const [viewMode, setViewMode] = useState<'normal' | 'comparison'>('normal');
+  const [period1Preset, setPeriod1Preset] = useState<TimePeriodPreset>('thisWeek');
+  const [period2Preset, setPeriod2Preset] = useState<TimePeriodPreset>('lastWeek');
+  const [period1CustomStart, setPeriod1CustomStart] = useState<number | undefined>();
+  const [period1CustomEnd, setPeriod1CustomEnd] = useState<number | undefined>();
+  const [period2CustomStart, setPeriod2CustomStart] = useState<number | undefined>();
+  const [period2CustomEnd, setPeriod2CustomEnd] = useState<number | undefined>();
+
   const {
     hasData,
     dogs,
@@ -31,6 +46,21 @@ export function AnalysisPage() {
     tagRecordDistribution,
     dogStats,
   } = useStats(selectedDogId);
+
+  const {
+    comparisonStats,
+    period1Label,
+    period2Label,
+    hasData: hasComparisonData,
+  } = useComparisonStats(
+    period1Preset,
+    period2Preset,
+    period1CustomStart,
+    period1CustomEnd,
+    period2CustomStart,
+    period2CustomEnd,
+    selectedDogId
+  );
 
   if (!hasData) {
     return (
@@ -83,11 +113,79 @@ export function AnalysisPage() {
           </p>
         </motion.div>
 
-        {dogs.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05 }}
+          className="mb-4"
+        >
+          <div className="bg-white rounded-xl p-1 shadow-sm flex">
+            <button
+              onClick={() => setViewMode('normal')}
+              className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${
+                viewMode === 'normal'
+                  ? 'bg-amber-500 text-white shadow-md'
+                  : 'text-gray-600 hover:bg-amber-50'
+              }`}
+            >
+              <BarChart2 size={16} />
+              普通分析
+            </button>
+            <button
+              onClick={() => setViewMode('comparison')}
+              className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${
+                viewMode === 'comparison'
+                  ? 'bg-blue-500 text-white shadow-md'
+                  : 'text-gray-600 hover:bg-blue-50'
+              }`}
+            >
+              <GitCompare size={16} />
+              数据对比
+            </button>
+          </div>
+        </motion.div>
+
+        {viewMode === 'comparison' && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
+            className="mb-6 space-y-4"
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <TimePeriodSelector
+                label="时段 1（对比基准）"
+                selectedPreset={period1Preset}
+                customStart={period1CustomStart}
+                customEnd={period1CustomEnd}
+                onPresetChange={setPeriod1Preset}
+                onCustomRangeChange={(start, end) => {
+                  setPeriod1CustomStart(start);
+                  setPeriod1CustomEnd(end);
+                }}
+                color="amber"
+              />
+              <TimePeriodSelector
+                label="时段 2（对比对象）"
+                selectedPreset={period2Preset}
+                customStart={period2CustomStart}
+                customEnd={period2CustomEnd}
+                onPresetChange={setPeriod2Preset}
+                onCustomRangeChange={(start, end) => {
+                  setPeriod2CustomStart(start);
+                  setPeriod2CustomEnd(end);
+                }}
+                color="blue"
+              />
+            </div>
+          </motion.div>
+        )}
+
+        {dogs.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: viewMode === 'comparison' ? 0.15 : 0.1 }}
             className="mb-6"
           >
             <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
@@ -215,142 +313,335 @@ export function AnalysisPage() {
           </motion.div>
         )}
 
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="bg-gradient-to-r from-amber-500 to-orange-500 rounded-2xl p-5 mb-6 text-white shadow-lg"
-        >
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="flex-shrink-0 mt-0.5" size={24} />
-            <div>
-              <h3 className="font-display text-lg font-bold mb-1">
-                分析摘要
-                {selectedDogId && dogs.find((d) => d.id === selectedDogId) && (
-                  <span className="text-white/80 text-base font-normal ml-2">
-                    — {dogs.find((d) => d.id === selectedDogId)!.name}
-                  </span>
-                )}
-              </h3>
-              <p className="text-white/90 text-sm">
-                共记录 {summaryStats.totalRecords} 次，
-                从 {formatFriendlyDate(summaryStats.dateRange.start)} 到{' '}
-                {formatFriendlyDate(summaryStats.dateRange.end)}
-              </p>
+        {viewMode === 'normal' ? (
+          <>
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="bg-gradient-to-r from-amber-500 to-orange-500 rounded-2xl p-5 mb-6 text-white shadow-lg"
+            >
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="flex-shrink-0 mt-0.5" size={24} />
+                <div>
+                  <h3 className="font-display text-lg font-bold mb-1">
+                    分析摘要
+                    {selectedDogId && dogs.find((d) => d.id === selectedDogId) && (
+                      <span className="text-white/80 text-base font-normal ml-2">
+                        — {dogs.find((d) => d.id === selectedDogId)!.name}
+                      </span>
+                    )}
+                  </h3>
+                  <p className="text-white/90 text-sm">
+                    共记录 {summaryStats.totalRecords} 次，
+                    从 {formatFriendlyDate(summaryStats.dateRange.start)} 到{' '}
+                    {formatFriendlyDate(summaryStats.dateRange.end)}
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              <StatsCard
+                icon={Clock}
+                label="最闹时段"
+                value={peakHourInfo?.label || '暂无'}
+                subValue={peakHourInfo ? getTimePeriod(peakHourInfo.hour) : ''}
+                color="coral"
+                delay={0.3}
+              />
+              <StatsCard
+                icon={Calendar}
+                label="最闹星期"
+                value={peakDayInfo?.fullLabel || '暂无'}
+                subValue={peakHourInfo ? `${peakHourInfo.count} 次记录` : ''}
+                color="amber"
+                delay={0.4}
+              />
+              <StatsCard
+                icon={TrendingUp}
+                label="日均次数"
+                value={summaryStats.dailyAverage.toFixed(1)}
+                subValue="次/天"
+                color="mint"
+                delay={0.5}
+              />
+              <StatsCard
+                icon={BarChart3}
+                label="最高单天"
+                value={
+                  summaryStats.recordsByDay.length > 0
+                    ? Math.max(...summaryStats.recordsByDay.map((d) => d.count))
+                    : 0
+                }
+                subValue="次"
+                color="coral"
+                delay={0.6}
+              />
             </div>
-          </div>
-        </motion.div>
 
-        <div className="grid grid-cols-2 gap-3 mb-6">
-          <StatsCard
-            icon={Clock}
-            label="最闹时段"
-            value={peakHourInfo?.label || '暂无'}
-            subValue={peakHourInfo ? getTimePeriod(peakHourInfo.hour) : ''}
-            color="coral"
-            delay={0.3}
-          />
-          <StatsCard
-            icon={Calendar}
-            label="最闹星期"
-            value={peakDayInfo?.fullLabel || '暂无'}
-            subValue={peakHourInfo ? `${peakHourInfo.count} 次记录` : ''}
-            color="amber"
-            delay={0.4}
-          />
-          <StatsCard
-            icon={TrendingUp}
-            label="日均次数"
-            value={summaryStats.dailyAverage.toFixed(1)}
-            subValue="次/天"
-            color="mint"
-            delay={0.5}
-          />
-          <StatsCard
-            icon={BarChart3}
-            label="最高单天"
-            value={
-              summaryStats.recordsByDay.length > 0
-                ? Math.max(...summaryStats.recordsByDay.map((d) => d.count))
-                : 0
-            }
-            subValue="次"
-            color="coral"
-            delay={0.6}
-          />
-        </div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.7 }}
-          className="mb-6"
-        >
-          <HourlyChart data={chartData} maxCount={maxHourlyCount} />
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.9 }}
-          className="mb-6"
-        >
-          <WeeklyHeatmap data={heatmapData} maxCount={maxWeeklyCount} />
-        </motion.div>
-
-        {tagRecordDistribution.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 1.0 }}
-            className="mb-6"
-          >
-            <TagPieChart
-              data={tagRecordDistribution}
-              totalRecords={summaryStats.totalRecords}
-            />
-          </motion.div>
-        )}
-
-        {summaryStats.recordsByDay.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 1.1 }}
-            className="mt-6 bg-white rounded-2xl p-5 shadow-soft"
-          >
-            <h3 className="font-display text-lg font-bold text-gray-800 mb-4">
-              每日趋势
-            </h3>
-            <div className="space-y-2">
-              {summaryStats.recordsByDay.slice(-7).map((day, index) => (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.7 }}
+              className="mb-6"
+            >
+              <HourlyChart data={chartData} maxCount={maxHourlyCount} />
+            </motion.div>
+          </>
+        ) : (
+          <>
+            {!hasComparisonData || !comparisonStats ? (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="text-center py-16 bg-white/50 rounded-2xl mb-6"
+              >
+                <div className="text-6xl mb-4">📊</div>
+                <p className="text-amber-700 font-medium">
+                  所选时段没有数据哦
+                </p>
+                <p className="text-amber-500 text-sm mt-2">
+                  试试选择其他时间段吧~
+                </p>
+              </motion.div>
+            ) : (
+              <>
                 <motion.div
-                  key={day.date}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 1.2 + index * 0.1 }}
-                  className="flex items-center gap-3"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.2 }}
+                  className="bg-gradient-to-r from-amber-500 via-orange-500 to-blue-500 rounded-2xl p-5 mb-6 text-white shadow-lg"
                 >
-                  <div className="w-20 text-sm text-gray-600 flex-shrink-0">
-                    {formatFriendlyDate(day.timestamp)}
-                  </div>
-                  <div className="flex-1 h-6 bg-amber-50 rounded-full overflow-hidden">
-                    <motion.div
-                      className="h-full bg-gradient-to-r from-amber-400 to-amber-600 rounded-full"
-                      initial={{ width: 0 }}
-                      animate={{
-                        width: `${(day.count / Math.max(...summaryStats.recordsByDay.map((d) => d.count))) * 100}%`,
-                      }}
-                      transition={{ delay: 1.3 + index * 0.1, duration: 0.5 }}
-                    />
-                  </div>
-                  <div className="w-10 text-right text-sm font-medium text-amber-700">
-                    {day.count}
+                  <div className="flex items-start gap-3">
+                    <GitCompare className="flex-shrink-0 mt-0.5" size={24} />
+                    <div>
+                      <h3 className="font-display text-lg font-bold mb-1">
+                        对比分析
+                        {selectedDogId && dogs.find((d) => d.id === selectedDogId) && (
+                          <span className="text-white/80 text-base font-normal ml-2">
+                            — {dogs.find((d) => d.id === selectedDogId)!.name}
+                          </span>
+                        )}
+                      </h3>
+                      <div className="flex items-center gap-2 text-white/90 text-sm">
+                        <span className="bg-white/20 px-2 py-0.5 rounded text-xs">{period1Label}</span>
+                        <ArrowRightLeft size={14} />
+                        <span className="bg-white/20 px-2 py-0.5 rounded text-xs">{period2Label}</span>
+                      </div>
+                    </div>
                   </div>
                 </motion.div>
-              ))}
-            </div>
-          </motion.div>
+
+                <div className="space-y-4 mb-6">
+                  <ComparisonStatsCard
+                    icon={BarChart3}
+                    label="总叫唤次数"
+                    value1={comparisonStats.period1.summary.totalRecords}
+                    value2={comparisonStats.period2.summary.totalRecords}
+                    subValue1="次"
+                    subValue2="次"
+                    label1={period1Label}
+                    label2={period2Label}
+                    color1="amber"
+                    color2="blue"
+                  />
+
+                  <ComparisonStatsCard
+                    icon={TrendingUp}
+                    label="日均叫唤次数"
+                    value1={comparisonStats.period1.summary.dailyAverage.toFixed(1)}
+                    value2={comparisonStats.period2.summary.dailyAverage.toFixed(1)}
+                    subValue1="次/天"
+                    subValue2="次/天"
+                    label1={period1Label}
+                    label2={period2Label}
+                    color1="mint"
+                    color2="blue"
+                  />
+
+                  <ComparisonStatsCard
+                    icon={Clock}
+                    label="高峰时段"
+                    value1={comparisonStats.period1.peakHourInfo?.label || '暂无'}
+                    value2={comparisonStats.period2.peakHourInfo?.label || '暂无'}
+                    subValue1={comparisonStats.period1.peakHourInfo?.period || ''}
+                    subValue2={comparisonStats.period2.peakHourInfo?.period || ''}
+                    label1={period1Label}
+                    label2={period2Label}
+                    color1="coral"
+                    color2="blue"
+                    showTrend={false}
+                  />
+
+                  <ComparisonStatsCard
+                    icon={Calendar}
+                    label="高峰星期"
+                    value1={comparisonStats.period1.peakDayInfo?.fullLabel || '暂无'}
+                    value2={comparisonStats.period2.peakDayInfo?.fullLabel || '暂无'}
+                    subValue1={comparisonStats.period1.peakHourInfo ? `${comparisonStats.period1.peakHourInfo.count} 次` : ''}
+                    subValue2={comparisonStats.period2.peakHourInfo ? `${comparisonStats.period2.peakHourInfo.count} 次` : ''}
+                    label1={period1Label}
+                    label2={period2Label}
+                    color1="amber"
+                    color2="blue"
+                    showTrend={false}
+                  />
+                </div>
+
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.7 }}
+                  className="mb-6"
+                >
+                  <ComparisonBarChart data={comparisonStats} />
+                </motion.div>
+
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.9 }}
+                  className="mb-6 bg-white rounded-2xl p-5 shadow-soft"
+                >
+                  <h3 className="font-display text-lg font-bold text-gray-800 mb-4">
+                    对比详情
+                  </h3>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-3 gap-3 text-center">
+                      <div className="bg-gray-50 rounded-xl p-3">
+                        <div className="text-xs text-gray-500 mb-1">时段</div>
+                        <div className="font-bold text-gray-800">指标</div>
+                      </div>
+                      <div className="bg-amber-50 rounded-xl p-3">
+                        <div className="text-xs text-amber-600 mb-1">{period1Label}</div>
+                        <div className="font-bold text-amber-600">数值</div>
+                      </div>
+                      <div className="bg-blue-50 rounded-xl p-3">
+                        <div className="text-xs text-blue-600 mb-1">{period2Label}</div>
+                        <div className="font-bold text-blue-600">数值</div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-3 text-center">
+                      <div className="bg-gray-50 rounded-xl p-3">
+                        <div className="text-xs text-gray-500 mb-1">总记录</div>
+                        <div className="font-bold text-gray-800 text-lg">
+                          {comparisonStats.period1.summary.totalRecords + comparisonStats.period2.summary.totalRecords}
+                        </div>
+                      </div>
+                      <div className="bg-amber-50 rounded-xl p-3">
+                        <div className="text-xs text-amber-600 mb-1">时段1</div>
+                        <div className="font-bold text-amber-600 text-lg">
+                          {comparisonStats.period1.summary.totalRecords}
+                        </div>
+                      </div>
+                      <div className="bg-blue-50 rounded-xl p-3">
+                        <div className="text-xs text-blue-600 mb-1">时段2</div>
+                        <div className="font-bold text-blue-600 text-lg">
+                          {comparisonStats.period2.summary.totalRecords}
+                        </div>
+                      </div>
+                    </div>
+
+                    {comparisonStats.period1.summary.recordsByDay.length > 0 && comparisonStats.period2.summary.recordsByDay.length > 0 && (
+                      <div className="grid grid-cols-3 gap-3 text-center">
+                        <div className="bg-gray-50 rounded-xl p-3">
+                          <div className="text-xs text-gray-500 mb-1">最高单天</div>
+                          <div className="font-bold text-gray-800 text-lg">
+                            {Math.max(
+                              Math.max(...comparisonStats.period1.summary.recordsByDay.map(d => d.count)),
+                              Math.max(...comparisonStats.period2.summary.recordsByDay.map(d => d.count))
+                            )}
+                          </div>
+                        </div>
+                        <div className="bg-amber-50 rounded-xl p-3">
+                          <div className="text-xs text-amber-600 mb-1">时段1</div>
+                          <div className="font-bold text-amber-600 text-lg">
+                            {Math.max(...comparisonStats.period1.summary.recordsByDay.map(d => d.count))}
+                          </div>
+                        </div>
+                        <div className="bg-blue-50 rounded-xl p-3">
+                          <div className="text-xs text-blue-600 mb-1">时段2</div>
+                          <div className="font-bold text-blue-600 text-lg">
+                            {Math.max(...comparisonStats.period2.summary.recordsByDay.map(d => d.count))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              </>
+            )}
+          </>
+        )}
+
+        {viewMode === 'normal' && (
+          <>
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.9 }}
+              className="mb-6"
+            >
+              <WeeklyHeatmap data={heatmapData} maxCount={maxWeeklyCount} />
+            </motion.div>
+
+            {tagRecordDistribution.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 1.0 }}
+                className="mb-6"
+              >
+                <TagPieChart
+                  data={tagRecordDistribution}
+                  totalRecords={summaryStats.totalRecords}
+                />
+              </motion.div>
+            )}
+
+            {summaryStats.recordsByDay.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 1.1 }}
+                className="mt-6 bg-white rounded-2xl p-5 shadow-soft"
+              >
+                <h3 className="font-display text-lg font-bold text-gray-800 mb-4">
+                  每日趋势
+                </h3>
+                <div className="space-y-2">
+                  {summaryStats.recordsByDay.slice(-7).map((day, index) => (
+                    <motion.div
+                      key={day.date}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 1.2 + index * 0.1 }}
+                      className="flex items-center gap-3"
+                    >
+                      <div className="w-20 text-sm text-gray-600 flex-shrink-0">
+                        {formatFriendlyDate(day.timestamp)}
+                      </div>
+                      <div className="flex-1 h-6 bg-amber-50 rounded-full overflow-hidden">
+                        <motion.div
+                          className="h-full bg-gradient-to-r from-amber-400 to-amber-600 rounded-full"
+                          initial={{ width: 0 }}
+                          animate={{
+                            width: `${(day.count / Math.max(...summaryStats.recordsByDay.map((d) => d.count))) * 100}%`,
+                          }}
+                          transition={{ delay: 1.3 + index * 0.1, duration: 0.5 }}
+                        />
+                      </div>
+                      <div className="w-10 text-right text-sm font-medium text-amber-700">
+                        {day.count}
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+          </>
         )}
       </div>
     </div>

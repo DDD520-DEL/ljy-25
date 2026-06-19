@@ -6,6 +6,9 @@ import {
   DailyCount,
   TagStats,
   HOURS,
+  WEEKDAY_SHORT,
+  formatHour,
+  getTimePeriod,
 } from '@/types';
 import { formatDate, getHour, getDayOfWeek, getDaysBetween } from './date';
 
@@ -242,4 +245,67 @@ export function getAllTags(records: BarkRecord[]): string[] {
     record.tags?.forEach(tag => tagSet.add(tag));
   });
   return Array.from(tagSet).sort();
+}
+
+export function filterRecordsByDateRange(
+  records: BarkRecord[],
+  dateRange: { start: number; end: number }
+): BarkRecord[] {
+  return records.filter(
+    (r) => r.timestamp >= dateRange.start && r.timestamp <= dateRange.end
+  );
+}
+
+export function calculateComparisonStats(
+  period1Records: BarkRecord[],
+  period2Records: BarkRecord[],
+  period1Label: string,
+  period2Label: string
+) {
+  const period1Summary = calculateSummaryStats(period1Records);
+  const period2Summary = calculateSummaryStats(period2Records);
+  const period1Hourly = calculateHourlyStats(period1Records);
+  const period2Hourly = calculateHourlyStats(period2Records);
+
+  const maxHourlyCount = Math.max(
+    getMaxHourlyCount(period1Hourly),
+    getMaxHourlyCount(period2Hourly)
+  );
+
+  const getPeakHourInfo = (summary: SummaryStats, hourly: HourlyStats[]) => {
+    if (summary.peakHour < 0) return null;
+    return {
+      hour: summary.peakHour,
+      label: formatHour(summary.peakHour),
+      period: getTimePeriod(summary.peakHour),
+      count: hourly[summary.peakHour]?.count || 0,
+    };
+  };
+
+  const getPeakDayInfo = (summary: SummaryStats) => {
+    if (summary.peakDay < 0) return null;
+    return {
+      day: summary.peakDay,
+      label: WEEKDAY_SHORT[summary.peakDay],
+      fullLabel: `周${WEEKDAY_SHORT[summary.peakDay]}`,
+    };
+  };
+
+  return {
+    period1: {
+      summary: period1Summary,
+      hourly: period1Hourly,
+      peakHourInfo: getPeakHourInfo(period1Summary, period1Hourly),
+      peakDayInfo: getPeakDayInfo(period1Summary),
+    },
+    period2: {
+      summary: period2Summary,
+      hourly: period2Hourly,
+      peakHourInfo: getPeakHourInfo(period2Summary, period2Hourly),
+      peakDayInfo: getPeakDayInfo(period2Summary),
+    },
+    period1Label,
+    period2Label,
+    maxHourlyCount,
+  };
 }
