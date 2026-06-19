@@ -13,7 +13,7 @@ import {
   AreaChart,
 } from 'recharts';
 import { DailyActiveData } from '@/types';
-import { BarChart2, Activity, Users, UserPlus, FileText } from 'lucide-react';
+import { BarChart2, Activity, Users, UserPlus, FileText, BarChart3 } from 'lucide-react';
 
 interface DailyActiveTrendChartProps {
   data: DailyActiveData[];
@@ -25,6 +25,10 @@ type MetricType = 'activeUsers' | 'newUsers' | 'totalRecords' | 'all';
 export function DailyActiveTrendChart({ data }: DailyActiveTrendChartProps) {
   const [chartType, setChartType] = useState<ChartType>('area');
   const [metric, setMetric] = useState<MetricType>('all');
+
+  const hasData = data.some(
+    (item) => item.activeUsers > 0 || item.newUsers > 0 || item.totalRecords > 0
+  );
 
   const chartData = useMemo(() => {
     return data.map((item) => ({
@@ -327,11 +331,20 @@ export function DailyActiveTrendChart({ data }: DailyActiveTrendChartProps) {
         </div>
       </div>
       <div className="p-5">
-        <div className="h-80">
-          <ResponsiveContainer width="100%" height="100%">
-            {renderChart()}
-          </ResponsiveContainer>
-        </div>
+        {!hasData ? (
+          <div className="h-80 flex flex-col items-center justify-center text-gray-400">
+            <BarChart3 size={48} className="mb-3 opacity-30" />
+            <p className="text-base font-medium text-gray-400 mb-1">暂无趋势数据</p>
+            <p className="text-sm text-gray-300">当前日期范围内没有用户活动记录</p>
+            <p className="text-xs text-gray-300 mt-2">当用户注册并产生记录后，日活跃趋势将在此展示</p>
+          </div>
+        ) : (
+          <div className="h-80">
+            <ResponsiveContainer width="100%" height="100%">
+              {renderChart()}
+            </ResponsiveContainer>
+          </div>
+        )}
       </div>
     </motion.div>
   );

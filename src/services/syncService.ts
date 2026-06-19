@@ -437,49 +437,173 @@ function setAdminSessions(sessions: Record<string, string>): void {
   localStorage.setItem(ADMIN_SESSIONS_KEY, JSON.stringify(sessions));
 }
 
-function generateMockDailyTrend(days: number): DailyActiveData[] {
-  const data: DailyActiveData[] = [];
-  const now = new Date();
-  for (let i = days - 1; i >= 0; i--) {
-    const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
-    const baseActive = 80 + Math.floor(Math.random() * 60);
-    const baseNew = 5 + Math.floor(Math.random() * 15);
-    const baseRecords = 200 + Math.floor(Math.random() * 300);
-    data.push({
-      date: date.toISOString().split('T')[0],
-      timestamp: date.getTime(),
-      activeUsers: baseActive + Math.floor(Math.sin(i * 0.5) * 20),
-      newUsers: baseNew + Math.floor(Math.random() * 5),
-      totalRecords: baseRecords + Math.floor(Math.sin(i * 0.3) * 100),
+function calculateDailyTrend(
+  userStorage: CloudUserStorage,
+  dataStorage: CloudDataStorage,
+  dateRange: { start: number; end: number }
+): DailyActiveData[] {
+  const allUsers = Object.values(userStorage.users);
+  const daysDiff = Math.ceil((dateRange.end - dateRange.start) / 86400000);
+  const days = Math.max(1, daysDiff);
+
+  const dailyMap = new Map<string, {
+    date: string;
+    timestamp: number;
+    activeUserIds: Set<string>;
+    newUserIds: Set<string>;
+    recordCount: number;
+  }>();
+
+  for (let i = 0; i < days; i++) {
+    const dayStart = new Date(dateRange.start);
+    dayStart.setHours(0, 0, 0, 0);
+    const d = new Date(dayStart.getTime() + i * 86400000);
+    const dateStr = d.toISOString().split('T')[0];
+    dailyMap.set(dateStr, {
+      date: dateStr,
+      timestamp: d.getTime(),
+      activeUserIds: new Set(),
+      newUserIds: new Set(),
+      recordCount: 0,
     });
   }
-  return data;
+
+  allUsers.forEach((userData) => {
+    const user = userData.user;
+    const createdDate = new Date(user.createdAt).toISOString().split('T')[0];
+    const loginDate = user.lastLoginAt > 0
+      ? new Date(user.lastLoginAt).toISOString().split('T')[0]
+      : null;
+
+    if (dailyMap.has(createdDate)) {
+      dailyMap.get(createdDate)!.newUserIds.add(user.id);
+    }
+
+    if (loginDate && dailyMap.has(loginDate)) {
+      dailyMap.get(loginDate)!.activeUserIds.add(user.id);
+    }
+  });
+
+  Object.entries(dataStorage).forEach(([userId, userData]) => {
+    userData.records.forEach((record) => {
+      if (record.timestamp < dateRange.start || record.timestamp > dateRange.end) return;
+      const recordDate = new Date(record.timestamp).toISOString().split('T')[0];
+      const dayData = dailyMap.get(recordDate);
+      if (dayData) {
+        dayData.recordCount++;
+        dayData.activeUserIds.add(userId);
+      }
+    });
+  });
+
+  return Array.from(dailyMap.values())
+    .sort((a, b) => a.timestamp - b.timestamp)
+    .map((d) => ({
+      date: d.date,
+      timestamp: d.timestamp,
+      activeUsers: d.activeUserIds.size,
+      newUsers: d.newUserIds.size,
+      totalRecords: d.recordCount,
+    }));
 }
 
-const CHINA_REGIONS: Omit<RegionData, 'userCount' | 'recordCount'>[] = [
-  { province: '广东', city: '广州', lat: 23.1291, lng: 113.2644 },
-  { province: '广东', city: '深圳', lat: 22.5431, lng: 114.0579 },
-  { province: '北京', city: '北京', lat: 39.9042, lng: 116.4074 },
-  { province: '上海', city: '上海', lat: 31.2304, lng: 121.4737 },
-  { province: '浙江', city: '杭州', lat: 30.2741, lng: 120.1551 },
-  { province: '江苏', city: '南京', lat: 32.0603, lng: 118.7969 },
-  { province: '四川', city: '成都', lat: 30.5728, lng: 104.0668 },
-  { province: '湖北', city: '武汉', lat: 30.5928, lng: 114.3055 },
-  { province: '陕西', city: '西安', lat: 34.3416, lng: 108.9398 },
-  { province: '山东', city: '青岛', lat: 36.0671, lng: 120.3826 },
-  { province: '福建', city: '厦门', lat: 24.4798, lng: 118.0894 },
-  { province: '辽宁', city: '沈阳', lat: 41.8057, lng: 123.4315 },
-  { province: '湖南', city: '长沙', lat: 28.2282, lng: 112.9388 },
-  { province: '河南', city: '郑州', lat: 34.7466, lng: 113.6254 },
-  { province: '重庆', city: '重庆', lat: 29.4316, lng: 106.9123 },
-];
+function latLngToRegion(lat: number, lng: number): { province: string; city: string } | null {
+  const REGION_BOUNDS: { province: string; city: string; minLat: number; maxLat: number; minLng: number; maxLng: number }[] = [
+    { province: '黑龙江', city: '哈尔滨', minLat: 44.0, maxLat: 54.0, minLng: 121.0, maxLng: 136.0 },
+    { province: '吉林', city: '长春', minLat: 40.5, maxLat: 44.0, minLng: 122.0, maxLng: 131.0 },
+    { province: '辽宁', city: '沈阳', minLat: 38.5, maxLat: 43.5, minLng: 118.5, maxLng: 126.0 },
+    { province: '北京', city: '北京', minLat: 39.0, maxLat: 41.5, minLng: 115.5, maxLng: 117.5 },
+    { province: '天津', city: '天津', minLat: 38.5, maxLat: 40.5, minLng: 116.5, maxLng: 118.0 },
+    { province: '河北', city: '石家庄', minLat: 36.0, maxLat: 42.5, minLng: 113.5, maxLng: 120.0 },
+    { province: '山东', city: '济南', minLat: 34.0, maxLat: 38.5, minLng: 114.5, maxLng: 123.0 },
+    { province: '河南', city: '郑州', minLat: 31.0, maxLat: 36.5, minLng: 110.0, maxLng: 116.5 },
+    { province: '山西', city: '太原', minLat: 34.5, maxLat: 40.5, minLng: 110.0, maxLng: 114.5 },
+    { province: '陕西', city: '西安', minLat: 31.5, maxLat: 39.5, minLng: 105.5, maxLng: 111.5 },
+    { province: '甘肃', city: '兰州', minLat: 32.5, maxLat: 43.0, minLng: 92.5, maxLng: 108.5 },
+    { province: '四川', city: '成都', minLat: 26.0, maxLat: 34.0, minLng: 97.0, maxLng: 108.5 },
+    { province: '重庆', city: '重庆', minLat: 28.0, maxLat: 32.5, minLng: 105.0, maxLng: 110.5 },
+    { province: '湖北', city: '武汉', minLat: 29.0, maxLat: 33.5, minLng: 108.5, maxLng: 116.5 },
+    { province: '湖南', city: '长沙', minLat: 24.5, maxLat: 30.5, minLng: 108.5, maxLng: 114.5 },
+    { province: '江西', city: '南昌', minLat: 24.5, maxLat: 30.5, minLng: 113.5, maxLng: 118.5 },
+    { province: '安徽', city: '合肥', minLat: 29.0, maxLat: 34.5, minLng: 114.5, maxLng: 119.5 },
+    { province: '浙江', city: '杭州', minLat: 27.0, maxLat: 31.5, minLng: 118.0, maxLng: 123.0 },
+    { province: '江苏', city: '南京', minLat: 30.5, maxLat: 35.0, minLng: 116.5, maxLng: 121.5 },
+    { province: '上海', city: '上海', minLat: 30.5, maxLat: 31.9, minLng: 120.5, maxLng: 122.5 },
+    { province: '福建', city: '福州', minLat: 23.5, maxLat: 28.5, minLng: 115.5, maxLng: 120.5 },
+    { province: '广东', city: '广州', minLat: 20.0, maxLat: 25.5, minLng: 109.5, maxLng: 117.5 },
+    { province: '广西', city: '南宁', minLat: 20.5, maxLat: 26.5, minLng: 104.5, maxLng: 112.5 },
+    { province: '云南', city: '昆明', minLat: 21.0, maxLat: 29.5, minLng: 97.0, maxLng: 106.5 },
+    { province: '贵州', city: '贵阳', minLat: 25.0, maxLat: 29.5, minLng: 103.5, maxLng: 109.5 },
+    { province: '海南', city: '海口', minLat: 18.0, maxLat: 20.5, minLng: 108.5, maxLng: 111.5 },
+    { province: '内蒙古', city: '呼和浩特', minLat: 37.0, maxLat: 53.5, minLng: 97.0, maxLng: 126.5 },
+    { province: '新疆', city: '乌鲁木齐', minLat: 34.0, maxLat: 49.5, minLng: 73.0, maxLng: 96.5 },
+    { province: '西藏', city: '拉萨', minLat: 26.0, maxLat: 37.0, minLng: 78.0, maxLng: 99.5 },
+    { province: '青海', city: '西宁', minLat: 31.5, maxLat: 39.5, minLng: 89.5, maxLng: 103.5 },
+    { province: '宁夏', city: '银川', minLat: 35.0, maxLat: 39.5, minLng: 104.0, maxLng: 107.5 },
+  ];
 
-function generateMockRegionData(): RegionData[] {
-  return CHINA_REGIONS.map((region) => ({
-    ...region,
-    userCount: 50 + Math.floor(Math.random() * 200),
-    recordCount: 200 + Math.floor(Math.random() * 1000),
-  }));
+  for (const region of REGION_BOUNDS) {
+    if (lat >= region.minLat && lat <= region.maxLat && lng >= region.minLng && lng <= region.maxLng) {
+      return { province: region.province, city: region.city };
+    }
+  }
+  return null;
+}
+
+function calculateRegionDistribution(
+  dataStorage: CloudDataStorage,
+  dateRange: { start: number; end: number }
+): RegionData[] {
+  const regionMap = new Map<string, {
+    province: string;
+    city: string;
+    lat: number;
+    lng: number;
+    userIds: Set<string>;
+    recordCount: number;
+  }>();
+
+  Object.entries(dataStorage).forEach(([userId, userData]) => {
+    const recordsInRange = userData.records.filter(
+      (r) => r.timestamp >= dateRange.start && r.timestamp <= dateRange.end
+    );
+
+    recordsInRange.forEach((record) => {
+      if (!record.geoLocation) return;
+
+      const region = latLngToRegion(record.geoLocation.lat, record.geoLocation.lng);
+      if (!region) return;
+
+      const key = `${region.province}-${region.city}`;
+      if (!regionMap.has(key)) {
+        regionMap.set(key, {
+          province: region.province,
+          city: region.city,
+          lat: record.geoLocation.lat,
+          lng: record.geoLocation.lng,
+          userIds: new Set(),
+          recordCount: 0,
+        });
+      }
+
+      const entry = regionMap.get(key)!;
+      entry.userIds.add(userId);
+      entry.recordCount++;
+      entry.lat = (entry.lat * (entry.recordCount - 1) + record.geoLocation.lat) / entry.recordCount;
+      entry.lng = (entry.lng * (entry.recordCount - 1) + record.geoLocation.lng) / entry.recordCount;
+    });
+  });
+
+  return Array.from(regionMap.values())
+    .map((entry) => ({
+      province: entry.province,
+      city: entry.city,
+      lat: Math.round(entry.lat * 10000) / 10000,
+      lng: Math.round(entry.lng * 10000) / 10000,
+      userCount: entry.userIds.size,
+      recordCount: entry.recordCount,
+    }))
+    .sort((a, b) => b.recordCount - a.recordCount);
 }
 
 function calculateDashboardStats(
@@ -488,7 +612,7 @@ function calculateDashboardStats(
   dateRange: { start: number; end: number }
 ): AdminDashboardStats {
   const allUsers = Object.values(userStorage.users);
-  let totalUsers = allUsers.length;
+  const totalUsers = allUsers.length;
 
   let totalRecords = 0;
   let activeUsersToday = 0;
@@ -533,19 +657,6 @@ function calculateDashboardStats(
       }
     });
   });
-
-  if (totalRecords === 0) {
-    totalRecords = 2847;
-    recordsToday = 156;
-    recordsYesterday = 142;
-  }
-  if (totalUsers === 0) {
-    totalUsers = 342;
-    activeUsersToday = 128;
-    activeUsersYesterday = 115;
-    newUsersToday = 12;
-    newUsersYesterday = 8;
-  }
 
   return {
     totalUsers,
@@ -637,10 +748,8 @@ export async function getAdminDashboardData(
 
   const stats = calculateDashboardStats(userStorage, dataStorage, dateRange);
 
-  const daysDiff = Math.ceil((dateRange.end - dateRange.start) / 86400000);
-  const daysToGenerate = Math.min(Math.max(daysDiff, 7), 30);
-  const dailyTrend = generateMockDailyTrend(daysToGenerate);
-  const regionDistribution = generateMockRegionData();
+  const dailyTrend = calculateDailyTrend(userStorage, dataStorage, dateRange);
+  const regionDistribution = calculateRegionDistribution(dataStorage, dateRange);
 
   return {
     stats,
