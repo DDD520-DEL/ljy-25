@@ -39,8 +39,10 @@ export function AudioPlayer({ audioData, audioMimeType, duration, onClose, compa
     };
 
     const handleLoadedMetadata = () => {
-      if (!duration) {
+      if (isFinite(audio.duration) && audio.duration > 0) {
         setTotalDuration(audio.duration);
+      } else if (duration) {
+        setTotalDuration(duration);
       }
     };
 

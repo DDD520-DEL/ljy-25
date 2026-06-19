@@ -333,7 +333,7 @@ export function BarkButton({ onClick, disabled = false }: BarkButtonProps) {
                       <div>
                         <p className="font-medium text-green-800">录音完成</p>
                         <p className="text-xs text-green-600">
-                          时长 {audioDuration || elapsed} 秒，可预览后保存
+                          时长 {audioDuration} 秒，可预览后保存
                         </p>
                       </div>
                     </div>
@@ -341,7 +341,7 @@ export function BarkButton({ onClick, disabled = false }: BarkButtonProps) {
                     <AudioPlayer
                       audioData={audioData}
                       audioMimeType={audioMimeType || undefined}
-                      duration={audioDuration || elapsed}
+                      duration={audioDuration}
                     />
 
                     <div className="flex gap-2">

@@ -33,6 +33,7 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}): UseAudi
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<number | null>(null);
   const startTimeRef = useRef<number>(0);
+  const stopRequestedRef = useRef(false);
 
   const cleanup = useCallback(() => {
     if (timerRef.current !== null) {
@@ -56,6 +57,69 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}): UseAudi
     audioChunksRef.current = [];
   }, []);
 
+  const doStopRecording = useCallback(async (): Promise<{
+    data: string;
+    mimeType: string;
+    duration: number;
+  } | null> => {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state === 'inactive') {
+      cleanup();
+      setIsRecording(false);
+      return null;
+    }
+
+    const actualDuration = Math.round((Date.now() - startTimeRef.current) / 1000);
+    const finalMimeType = recorder.mimeType || 'audio/webm';
+
+    return new Promise((resolve) => {
+      recorder.onstop = () => {
+        try {
+          const audioBlob = new Blob(audioChunksRef.current, { type: finalMimeType });
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const base64Data = reader.result as string;
+            setAudioData(base64Data);
+            setAudioMimeType(finalMimeType);
+            setAudioDuration(actualDuration);
+            setIsRecording(false);
+            setIsPaused(false);
+            setElapsed(actualDuration);
+            cleanup();
+            resolve({
+              data: base64Data,
+              mimeType: finalMimeType,
+              duration: actualDuration,
+            });
+          };
+          reader.onerror = () => {
+            setError('音频数据处理失败');
+            setIsRecording(false);
+            cleanup();
+            resolve(null);
+          };
+          reader.readAsDataURL(audioBlob);
+        } catch (e) {
+          setError('音频处理出错');
+          setIsRecording(false);
+          cleanup();
+          resolve(null);
+        }
+      };
+
+      try {
+        recorder.stop();
+      } catch (e) {
+        setIsRecording(false);
+        cleanup();
+        resolve(null);
+      }
+    });
+  }, [cleanup]);
+
+  const stopRecordingRef = useRef(doStopRecording);
+  stopRecordingRef.current = doStopRecording;
+
   const startRecording = useCallback(async () => {
     setError(null);
     setElapsed(0);
@@ -63,6 +127,7 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}): UseAudi
     setAudioMimeType(null);
     setAudioDuration(0);
     audioChunksRef.current = [];
+    stopRequestedRef.current = false;
 
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setError('当前浏览器不支持录音功能');
@@ -107,12 +172,13 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}): UseAudi
       startTimeRef.current = Date.now();
 
       timerRef.current = window.setInterval(() => {
-        const now = Date.now();
-        const elapsedSec = Math.floor((now - startTimeRef.current) / 1000);
+        const elapsedMs = Date.now() - startTimeRef.current;
+        const elapsedSec = Math.floor(elapsedMs / 1000);
         setElapsed(elapsedSec);
 
-        if (elapsedSec >= maxDuration) {
-          stopRecording();
+        if (elapsedSec >= maxDuration && !stopRequestedRef.current) {
+          stopRequestedRef.current = true;
+          stopRecordingRef.current();
         }
       }, 100);
     } catch (err: any) {
@@ -128,66 +194,13 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}): UseAudi
     }
   }, [maxDuration, cleanup]);
 
-  const stopRecording = useCallback(async (): Promise<{
-    data: string;
-    mimeType: string;
-    duration: number;
-  } | null> => {
-    if (!mediaRecorderRef.current || mediaRecorderRef.current.state === 'inactive') {
-      cleanup();
-      setIsRecording(false);
-      return null;
-    }
-
-    const finalDuration = elapsed;
-
-    return new Promise((resolve) => {
-      const recorder = mediaRecorderRef.current!;
-      const finalMimeType = recorder.mimeType || audioMimeType || 'audio/webm';
-
-      recorder.onstop = async () => {
-        try {
-          const audioBlob = new Blob(audioChunksRef.current, { type: finalMimeType });
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const base64Data = reader.result as string;
-            setAudioData(base64Data);
-            setAudioDuration(finalDuration || elapsed || Math.ceil(audioBlob.size / 10000));
-            setIsRecording(false);
-            setIsPaused(false);
-            cleanup();
-            resolve({
-              data: base64Data,
-              mimeType: finalMimeType,
-              duration: finalDuration || elapsed || 0,
-            });
-          };
-          reader.onerror = () => {
-            setError('音频数据处理失败');
-            setIsRecording(false);
-            cleanup();
-            resolve(null);
-          };
-          reader.readAsDataURL(audioBlob);
-        } catch (e) {
-          setError('音频处理出错');
-          setIsRecording(false);
-          cleanup();
-          resolve(null);
-        }
-      };
-
-      try {
-        recorder.stop();
-      } catch (e) {
-        setIsRecording(false);
-        cleanup();
-        resolve(null);
-      }
-    });
-  }, [elapsed, audioMimeType, cleanup]);
+  const stopRecording = useCallback(async () => {
+    stopRequestedRef.current = true;
+    return stopRecordingRef.current();
+  }, []);
 
   const cancelRecording = useCallback(() => {
+    stopRequestedRef.current = true;
     cleanup();
     setIsRecording(false);
     setIsPaused(false);
