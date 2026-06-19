@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Volume2, Mic, X, Check, Square, RotateCcw, SkipForward, AlertCircle } from 'lucide-react';
+import { Volume2, Mic, X, Check, Square, RotateCcw, SkipForward, AlertCircle, MapPin } from 'lucide-react';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { AudioPlayer } from '@/components/AudioPlayer';
+import { useLocationSharing } from '@/hooks/useLocationSharing';
+import { GeoLocation } from '@/types';
 
 interface BarkButtonProps {
-  onClick: (audioData?: { data: string; mimeType: string; duration: number }) => void;
+  onClick: (audioData?: { data: string; mimeType: string; duration: number }, location?: GeoLocation) => void;
   disabled?: boolean;
 }
 
@@ -21,6 +23,8 @@ export function BarkButton({ onClick, disabled = false }: BarkButtonProps) {
   const [ripples, setRipples] = useState<Ripple[]>([]);
   const [showRecorder, setShowRecorder] = useState(false);
   const [recordWithAudio, setRecordWithAudio] = useState(false);
+  const [pendingLocation, setPendingLocation] = useState<GeoLocation | null>(null);
+  const [isGettingLocation, setIsGettingLocation] = useState(false);
 
   const {
     isRecording,
@@ -35,6 +39,12 @@ export function BarkButton({ onClick, disabled = false }: BarkButtonProps) {
     clearAudio,
   } = useAudioRecorder({ maxDuration: MAX_RECORD_DURATION });
 
+  const {
+    isSharingEnabled,
+    permissionState,
+    getCurrentLocation,
+  } = useLocationSharing();
+
   useEffect(() => {
     if (showRecorder) {
       document.body.style.overflow = 'hidden';
@@ -46,8 +56,8 @@ export function BarkButton({ onClick, disabled = false }: BarkButtonProps) {
     };
   }, [showRecorder]);
 
-  const handleQuickClick = (e: React.MouseEvent<HTMLButtonElement>) => {
-    if (disabled) return;
+  const handleQuickClick = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (disabled || isGettingLocation) return;
 
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -65,12 +75,33 @@ export function BarkButton({ onClick, disabled = false }: BarkButtonProps) {
       setRipples((prev) => prev.filter((r) => r.id !== newRipple.id));
     }, 600);
 
-    onClick();
+    let location: GeoLocation | null = null;
+    if (isSharingEnabled && permissionState === 'granted') {
+      setIsGettingLocation(true);
+      try {
+        location = await getCurrentLocation();
+      } finally {
+        setIsGettingLocation(false);
+      }
+    }
+
+    onClick(undefined, location || undefined);
   };
 
-  const handleLongPressStart = (e: React.MouseEvent | React.TouchEvent) => {
-    if (disabled) return;
+  const handleLongPressStart = async (e: React.MouseEvent | React.TouchEvent) => {
+    if (disabled || isGettingLocation) return;
     e.preventDefault();
+
+    let location: GeoLocation | null = null;
+    if (isSharingEnabled && permissionState === 'granted') {
+      setIsGettingLocation(true);
+      try {
+        location = await getCurrentLocation();
+      } finally {
+        setIsGettingLocation(false);
+      }
+    }
+    setPendingLocation(location);
     setShowRecorder(true);
   };
 
@@ -85,19 +116,22 @@ export function BarkButton({ onClick, disabled = false }: BarkButtonProps) {
 
   const handleConfirmSave = () => {
     if (recordWithAudio && audioData) {
-      onClick({
-        data: audioData,
-        mimeType: audioMimeType || 'audio/webm',
-        duration: audioDuration,
-      });
+      onClick(
+        {
+          data: audioData,
+          mimeType: audioMimeType || 'audio/webm',
+          duration: audioDuration,
+        },
+        pendingLocation || undefined
+      );
     } else {
-      onClick();
+      onClick(undefined, pendingLocation || undefined);
     }
     closeRecorder();
   };
 
   const handleSkipAudio = () => {
-    onClick();
+    onClick(undefined, pendingLocation || undefined);
     closeRecorder();
   };
 
@@ -111,6 +145,7 @@ export function BarkButton({ onClick, disabled = false }: BarkButtonProps) {
     clearAudio();
     setShowRecorder(false);
     setRecordWithAudio(false);
+    setPendingLocation(null);
   };
 
   const progressPercent = Math.min((elapsed / MAX_RECORD_DURATION) * 100, 100);
@@ -161,12 +196,37 @@ export function BarkButton({ onClick, disabled = false }: BarkButtonProps) {
             <motion.div
               animate={{ rotate: [0, -10, 10, -10, 0] }}
               transition={{ repeat: Infinity, duration: 2, repeatDelay: 1 }}
+              className="relative"
             >
               <Volume2 size={48} strokeWidth={2.5} />
+              {isSharingEnabled && permissionState === 'granted' && (
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  className="absolute -top-1 -right-1 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center border-2 border-white"
+                >
+                  <MapPin size={10} className="text-white" />
+                </motion.div>
+              )}
+              {isGettingLocation && (
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  className="absolute -top-1 -right-1 w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center border-2 border-white animate-spin"
+                >
+                  <div className="w-2 h-2 border-2 border-white border-t-transparent rounded-full" />
+                </motion.div>
+              )}
             </motion.div>
             <div className="text-center">
               <div className="font-display text-2xl font-bold">听到狗叫</div>
               <div className="text-sm opacity-80">点击记录 · 长按录音</div>
+              {isSharingEnabled && permissionState === 'granted' && (
+                <div className="text-xs mt-1 text-white/70 flex items-center justify-center gap-1">
+                  <MapPin size={10} />
+                  位置分享已开启
+                </div>
+              )}
             </div>
           </div>
 

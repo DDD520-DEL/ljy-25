@@ -62,6 +62,12 @@ const initialSettings: AppSettings = {
     ],
     lastTriggeredDates: {},
   },
+  locationSharing: {
+    enabled: false,
+    precision: 'medium',
+    lastGrantedAt: 0,
+    lastDeniedAt: 0,
+  },
 };
 
 export const useBarkStore = create<BarkState>()(
@@ -452,6 +458,9 @@ export const useBarkStore = create<BarkState>()(
         }
         if (state && state.settings.reminders && !state.settings.reminders.times) {
           state.settings.reminders.times = initialSettings.reminders.times;
+        }
+        if (state && !state.settings.locationSharing) {
+          state.settings.locationSharing = initialSettings.locationSharing;
         }
         if (state && !state.deletedRecordIds) {
           state.deletedRecordIds = [];

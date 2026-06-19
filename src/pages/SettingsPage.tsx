@@ -23,11 +23,18 @@ import {
   UserPlus,
   LogIn,
   Info,
+  MapPin,
+  Shield,
+  Ruler,
+  Thermometer,
 } from 'lucide-react';
 import { useBarkStore } from '@/store/useBarkStore';
 import { useReminders } from '@/hooks/useReminders';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useSync } from '@/hooks/useSync';
+import { useLocationSharing } from '@/hooks/useLocationSharing';
+import * as heatmapService from '@/services/heatmapService';
+import { getGridSizeMeters } from '@/services/locationService';
 
 function formatDateTime(timestamp: number): string {
   if (!timestamp) return '从未同步';
@@ -64,6 +71,16 @@ export function SettingsPage() {
 
   const { syncIncremental } = useSync();
 
+  const {
+    isSharingEnabled,
+    permissionState,
+    precision,
+    currentLocation,
+    toggleSharing,
+    setPrecision,
+    enableSharing,
+  } = useLocationSharing();
+
   const [showAddTime, setShowAddTime] = useState(false);
   const [newHour, setNewHour] = useState(9);
   const [newMinute, setNewMinute] = useState(0);
@@ -77,6 +94,87 @@ export function SettingsPage() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [formError, setFormError] = useState('');
+
+  const [heatmapStats, setHeatmapStats] = useState<{
+    totalCells: number;
+    totalRecords: number;
+    lastAggregatedAt: number;
+    dataDate: string;
+    nextAggregationAt: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const loadStats = async () => {
+      const stats = await heatmapService.getHeatmapStats();
+      setHeatmapStats(stats);
+    };
+    if (isSharingEnabled) {
+      loadStats();
+    }
+  }, [isSharingEnabled]);
+
+  const handleToggleLocationSharing = async () => {
+    const enabled = await toggleSharing();
+    if (enabled) {
+      const stats = await heatmapService.getHeatmapStats();
+      setHeatmapStats(stats);
+    }
+  };
+
+  const handleEnableLocationSharing = async () => {
+    const enabled = await enableSharing();
+    if (enabled) {
+      const stats = await heatmapService.getHeatmapStats();
+      setHeatmapStats(stats);
+    }
+  };
+
+  const handleManualAggregate = async () => {
+    await heatmapService.aggregateHeatmapData(true);
+    const stats = await heatmapService.getHeatmapStats();
+    setHeatmapStats(stats);
+  };
+
+  const gridSizeMeters = currentLocation
+    ? getGridSizeMeters(precision, currentLocation.lat)
+    : 0;
+
+  const getLocationPermissionStatus = () => {
+    switch (permissionState) {
+      case 'granted':
+        return {
+          text: '位置权限已开启',
+          color: 'text-mint-600',
+          bg: 'bg-mint-50',
+          borderColor: 'border-mint-200',
+        };
+      case 'denied':
+        return {
+          text: '位置权限被拒绝',
+          color: 'text-coral-600',
+          bg: 'bg-coral-50',
+          borderColor: 'border-coral-200',
+        };
+      case 'unsupported':
+        return {
+          text: '当前浏览器不支持位置功能',
+          color: 'text-gray-500',
+          bg: 'bg-gray-50',
+          borderColor: 'border-gray-200',
+        };
+      case 'prompt':
+      case 'loading':
+      default:
+        return {
+          text: '尚未授权位置权限',
+          color: 'text-amber-600',
+          bg: 'bg-amber-50',
+          borderColor: 'border-amber-200',
+        };
+    }
+  };
+
+  const locPermStatus = getLocationPermissionStatus();
 
   useEffect(() => {
     if (authError) {
@@ -980,6 +1078,185 @@ export function SettingsPage() {
                       </motion.div>
                     ))}
                   </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
+          className="bg-white rounded-2xl shadow-soft overflow-hidden mb-6"
+        >
+          <div className="p-4 border-b border-gray-100 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
+              <MapPin className="text-blue-600" size={20} />
+            </div>
+            <div className="flex-1">
+              <h2 className="font-display font-bold text-gray-800">位置分享</h2>
+              <p className="text-xs text-gray-500">匿名分享位置，查看周边狗叫热点</p>
+            </div>
+            <div
+              role="switch"
+              aria-checked={isSharingEnabled}
+              tabIndex={0}
+              onClick={permissionState === 'granted' ? handleToggleLocationSharing : handleEnableLocationSharing}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  permissionState === 'granted' ? handleToggleLocationSharing() : handleEnableLocationSharing();
+                }
+              }}
+              className={`w-14 h-8 rounded-full transition-colors cursor-pointer relative ${
+                isSharingEnabled ? 'bg-blue-500' : 'bg-gray-300'
+              }`}
+            >
+              <motion.div
+                animate={{ x: isSharingEnabled ? 28 : 4 }}
+                transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                className="w-6 h-6 rounded-full bg-white shadow-md absolute top-1"
+              />
+            </div>
+          </div>
+
+          <AnimatePresence>
+            {isSharingEnabled && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.3 }}
+              >
+                <div className={`p-4 mx-4 mt-4 rounded-xl border ${locPermStatus.bg} ${locPermStatus.borderColor}`}>
+                  <div className="flex items-center gap-2">
+                    {permissionState === 'granted' ? (
+                      <Check className={locPermStatus.color} size={18} />
+                    ) : permissionState === 'denied' ? (
+                      <AlertCircle className={locPermStatus.color} size={18} />
+                    ) : (
+                      <MapPin className={locPermStatus.color} size={18} />
+                    )}
+                    <span className={`text-sm ${locPermStatus.color}`}>
+                      {locPermStatus.text}
+                    </span>
+                  </div>
+                  {(permissionState === 'prompt' || permissionState === 'loading') && (
+                    <button
+                      onClick={handleEnableLocationSharing}
+                      className="mt-3 w-full py-2.5 bg-blue-500 text-white rounded-xl text-sm font-medium hover:bg-blue-600 transition-colors"
+                    >
+                      开启位置权限
+                    </button>
+                  )}
+                  {permissionState === 'denied' && (
+                    <p className="mt-2 text-xs text-coral-500">
+                      请在浏览器地址栏左侧的权限设置中手动开启位置权限
+                    </p>
+                  )}
+                </div>
+
+                <div className="p-4">
+                  <div className="mb-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Ruler className="text-gray-500" size={16} />
+                      <span className="text-sm font-medium text-gray-700">分享精度</span>
+                      <span className="text-xs text-gray-400">
+                        (当前: ~{gridSizeMeters || 2000}米)
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {(['coarse', 'medium', 'fine'] as const).map((p) => (
+                        <button
+                          key={p}
+                          onClick={() => setPrecision(p)}
+                          className={`py-2 px-3 rounded-lg text-sm font-medium transition-all ${
+                            precision === p
+                              ? 'bg-blue-500 text-white'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}
+                        >
+                          {p === 'coarse' && '粗略'}
+                          {p === 'medium' && '中等'}
+                          {p === 'fine' && '精细'}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="mt-2 text-xs text-gray-400">
+                      精度越高，网格划分越细，隐私保护越弱。推荐使用中等精度。
+                    </p>
+                  </div>
+
+                  <div className="bg-blue-50 rounded-xl p-4 mb-4">
+                    <div className="flex items-start gap-2">
+                      <Shield className="text-blue-600 flex-shrink-0 mt-0.5" size={16} />
+                      <div>
+                        <p className="text-sm font-medium text-blue-800 mb-1">隐私保护说明</p>
+                        <ul className="text-xs text-blue-600 space-y-1">
+                          <li>• 位置数据会被脱敏到指定精度的网格</li>
+                          <li>• 不会记录您的具体位置和个人信息</li>
+                          <li>• 所有数据匿名汇总，无法追溯到个人</li>
+                          <li>• 可随时关闭位置分享功能</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+
+                  {heatmapStats && (
+                    <div className="bg-gray-50 rounded-xl p-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Thermometer className="text-orange-500" size={16} />
+                        <span className="text-sm font-medium text-gray-700">热力数据统计</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 mb-3">
+                        <div className="bg-white rounded-lg p-3 text-center">
+                          <div className="text-lg font-bold text-orange-600">
+                            {heatmapStats.totalRecords}
+                          </div>
+                          <div className="text-xs text-gray-500">总匿名记录</div>
+                        </div>
+                        <div className="bg-white rounded-lg p-3 text-center">
+                          <div className="text-lg font-bold text-blue-600">
+                            {heatmapStats.totalCells}
+                          </div>
+                          <div className="text-xs text-gray-500">覆盖区域</div>
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-500 space-y-1">
+                        <div className="flex justify-between">
+                          <span>数据日期:</span>
+                          <span className="font-medium">{heatmapStats.dataDate || '暂无'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>上次聚合:</span>
+                          <span className="font-medium">
+                            {heatmapStats.lastAggregatedAt
+                              ? new Date(heatmapStats.lastAggregatedAt).toLocaleString('zh-CN', {
+                                  month: '2-digit',
+                                  day: '2-digit',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })
+                              : '暂无'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>下次聚合:</span>
+                          <span className="font-medium text-amber-600">
+                            每日凌晨 00:00
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={handleManualAggregate}
+                        className="mt-3 w-full py-2 bg-gray-200 text-gray-700 rounded-lg text-xs font-medium hover:bg-gray-300 transition-colors flex items-center justify-center gap-1"
+                      >
+                        <RefreshCw size={12} />
+                        立即刷新数据
+                      </button>
+                    </div>
+                  )}
                 </div>
               </motion.div>
             )}

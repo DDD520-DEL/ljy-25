@@ -67,6 +67,12 @@ function initUserData(userId: string): void {
           times: [],
           lastTriggeredDates: {},
         },
+        locationSharing: {
+          enabled: false,
+          precision: 'medium',
+          lastGrantedAt: 0,
+          lastDeniedAt: 0,
+        },
       },
       deletedRecordIds: [],
       deletedDogIds: [],

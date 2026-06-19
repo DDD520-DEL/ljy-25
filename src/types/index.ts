@@ -90,11 +90,19 @@ export interface DogProfile {
   updatedAt: number;
 }
 
+export interface GeoLocation {
+  lat: number;
+  lng: number;
+  accuracy?: number;
+}
+
 export interface BarkRecord {
   id: string;
   timestamp: number;
   dogId?: string;
   location?: string;
+  geoLocation?: GeoLocation;
+  locationShared?: boolean;
   dogDescription?: string;
   duration?: number;
   note?: string;
@@ -104,6 +112,39 @@ export interface BarkRecord {
   tags?: string[];
   createdAt: number;
   updatedAt: number;
+}
+
+export interface HeatmapGridCell {
+  gridLat: number;
+  gridLng: number;
+  count: number;
+  intensity: number;
+}
+
+export interface NearbyHeatmapData {
+  centerLat: number;
+  centerLng: number;
+  radius: number;
+  gridSize: number;
+  cells: HeatmapGridCell[];
+  totalRecords: number;
+  lastUpdated: number;
+  dataDate: string;
+}
+
+export interface AnonymizedLocationRecord {
+  gridLat: number;
+  gridLng: number;
+  hour: number;
+  timestamp: number;
+  recordId: string;
+}
+
+export interface LocationSharingSettings {
+  enabled: boolean;
+  precision: 'coarse' | 'medium' | 'fine';
+  lastGrantedAt: number;
+  lastDeniedAt: number;
 }
 
 export interface TagStats {
@@ -158,6 +199,7 @@ export interface AppSettings {
   soundEnabled: boolean;
   theme: 'light' | 'dark' | 'auto';
   reminders: ReminderSettings;
+  locationSharing: LocationSharingSettings;
 }
 
 export type DogMood = 'happy' | 'neutral' | 'confused' | 'sad' | 'tired';

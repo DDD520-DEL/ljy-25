@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { motion } from 'framer-motion';
-import { Activity, Clock, TrendingUp, BellRing, BellOff, Dog } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Activity, Clock, TrendingUp, BellRing, BellOff, Dog, MapPin, Check, AlertCircle } from 'lucide-react';
 import { BarkButton } from '@/components/BarkButton';
 import { StatsCard } from '@/components/StatsCard';
 import { DogMood } from '@/components/DogMood';
@@ -10,9 +10,11 @@ import { useBarkRecords } from '@/hooks/useBarkRecords';
 import { useStats } from '@/hooks/useStats';
 import { useReminders } from '@/hooks/useReminders';
 import { useBarkStore } from '@/store/useBarkStore';
-import { getDogMood } from '@/types';
+import { useLocationSharing } from '@/hooks/useLocationSharing';
+import { getDogMood, GeoLocation, BarkRecord } from '@/types';
 import { formatFriendlyDateTime } from '@/utils/date';
 import { Link } from 'react-router-dom';
+import * as heatmapService from '@/services/heatmapService';
 
 export function HomePage() {
   const {
@@ -22,22 +24,77 @@ export function HomePage() {
     quickRecord,
     deleteRecord,
     updateRecord,
+    addRecord,
   } = useBarkRecords();
 
   const { peakHourInfo, summaryStats } = useStats();
   const { reminders, getTodayReminderStatus, formatReminderTime } = useReminders();
   const dogs = useBarkStore((s) => s.dogs);
 
+  const {
+    isSharingEnabled,
+    permissionState,
+    shareRecordLocation,
+    enableSharing,
+  } = useLocationSharing();
+
   const [selectedDogId, setSelectedDogId] = useState<string | undefined>(undefined);
   const [showDogManager, setShowDogManager] = useState(false);
+  const [locationShareStatus, setLocationShareStatus] = useState<{
+    show: boolean;
+    success: boolean;
+    message: string;
+  } | null>(null);
 
   const dogMood = getDogMood(todayCount);
 
   const recentRecords = todayRecords.slice(0, 5);
   const reminderStatus = getTodayReminderStatus();
 
-  const handleQuickRecord = (audioData?: { data: string; mimeType: string; duration: number }) => {
-    quickRecord(audioData, selectedDogId);
+  useEffect(() => {
+    heatmapService.startAggregationScheduler();
+    return () => {
+      heatmapService.stopAggregationScheduler();
+    };
+  }, []);
+
+  const handleQuickRecord = async (
+    audioData?: { data: string; mimeType: string; duration: number },
+    location?: GeoLocation
+  ) => {
+    const data: Partial<BarkRecord> = {};
+    if (audioData) {
+      data.audioData = audioData.data;
+      data.audioMimeType = audioData.mimeType;
+      data.audioDuration = audioData.duration;
+    }
+    if (location) {
+      data.geoLocation = location;
+      data.locationShared = isSharingEnabled;
+    }
+    if (selectedDogId) {
+      data.dogId = selectedDogId;
+    }
+
+    const record = addRecord(undefined, data);
+
+    if (isSharingEnabled && location) {
+      const shared = await shareRecordLocation(
+        record.id,
+        location,
+        record.timestamp
+      );
+
+      setLocationShareStatus({
+        show: true,
+        success: shared,
+        message: shared ? '位置数据已匿名分享' : '位置分享失败',
+      });
+
+      setTimeout(() => {
+        setLocationShareStatus(null);
+      }, 3000);
+    }
   };
 
   const renderReminderCard = () => {
@@ -212,6 +269,53 @@ export function HomePage() {
             </div>
           </motion.div>
         </div>
+
+        <AnimatePresence>
+          {locationShareStatus?.show && (
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className={`fixed top-4 left-4 right-4 max-w-lg mx-auto z-50 p-4 rounded-xl shadow-lg flex items-center gap-3 ${
+                locationShareStatus.success
+                  ? 'bg-green-500 text-white'
+                  : 'bg-coral-500 text-white'
+              }`}
+            >
+              {locationShareStatus.success ? (
+                <Check size={20} />
+              ) : (
+                <AlertCircle size={20} />
+              )}
+              <span className="font-medium">{locationShareStatus.message}</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {!isSharingEnabled && permissionState !== 'denied' && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+            className="mb-6"
+          >
+            <button
+              onClick={enableSharing}
+              className="w-full bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-2xl p-4 shadow-lg hover:shadow-xl transition-all flex items-center gap-4"
+            >
+              <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
+                <MapPin size={24} />
+              </div>
+              <div className="flex-1 text-left">
+                <div className="font-bold text-lg">开启位置分享</div>
+                <div className="text-sm text-white/80">
+                  匿名分享位置，查看周边狗叫热点分布
+                </div>
+              </div>
+              <div className="text-2xl">→</div>
+            </button>
+          </motion.div>
+        )}
 
         <div className="grid grid-cols-1 gap-3 mb-6">
           {renderReminderCard()}

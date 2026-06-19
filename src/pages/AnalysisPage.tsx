@@ -10,6 +10,7 @@ import {
   GitCompare,
   BarChart2,
   ArrowRightLeft,
+  MapPin,
 } from 'lucide-react';
 import { HourlyChart } from '@/components/HourlyChart';
 import { WeeklyHeatmap } from '@/components/WeeklyHeatmap';
@@ -18,10 +19,13 @@ import { TagPieChart } from '@/components/TagPieChart';
 import { TimePeriodSelector } from '@/components/TimePeriodSelector';
 import { ComparisonBarChart } from '@/components/ComparisonBarChart';
 import { ComparisonStatsCard } from '@/components/ComparisonStatsCard';
+import { NearbyHeatmap } from '@/components/NearbyHeatmap';
 import { useStats } from '@/hooks/useStats';
 import { useComparisonStats } from '@/hooks/useComparisonStats';
+import { useLocationSharing } from '@/hooks/useLocationSharing';
 import { getTimePeriod, TimePeriodPreset } from '@/types';
 import { formatFriendlyDate } from '@/utils/date';
+import { useNavigate } from 'react-router-dom';
 
 export function AnalysisPage() {
   const [selectedDogId, setSelectedDogId] = useState<string | undefined>(undefined);
@@ -32,6 +36,9 @@ export function AnalysisPage() {
   const [period1CustomEnd, setPeriod1CustomEnd] = useState<number | undefined>();
   const [period2CustomStart, setPeriod2CustomStart] = useState<number | undefined>();
   const [period2CustomEnd, setPeriod2CustomEnd] = useState<number | undefined>();
+
+  const { isSharingEnabled, permissionState, enableSharing } = useLocationSharing();
+  const navigate = useNavigate();
 
   const {
     hasData,
@@ -585,6 +592,23 @@ export function AnalysisPage() {
               className="mb-6"
             >
               <WeeklyHeatmap data={heatmapData} maxCount={maxWeeklyCount} />
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.95 }}
+              className="mb-6"
+            >
+              <NearbyHeatmap
+                onLocationRequired={() => {
+                  if (permissionState === 'denied') {
+                    navigate('/settings');
+                  } else {
+                    enableSharing();
+                  }
+                }}
+              />
             </motion.div>
 
             {tagRecordDistribution.length > 0 && (
