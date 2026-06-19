@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Copy,
   Download,
@@ -7,10 +7,21 @@ import {
   FileText,
   Code2,
   AlertCircle,
+  Music,
+  FileAudio,
+  Loader2,
+  Info,
 } from 'lucide-react';
 import { useBarkRecords } from '@/hooks/useBarkRecords';
 import { useStats } from '@/hooks/useStats';
-import { exportRecordsAsText, exportRecordsAsJSON } from '@/utils/storage';
+import {
+  exportRecordsAsText,
+  exportRecordsAsJSON,
+  prepareExportBundle,
+  downloadBlob,
+  downloadMultipleFiles,
+  extractAudioFiles,
+} from '@/utils/storage';
 import { WEEKDAYS } from '@/types';
 
 export function ExportPage() {
@@ -19,6 +30,13 @@ export function ExportPage() {
     useStats();
   const [copied, setCopied] = useState(false);
   const [exportFormat, setExportFormat] = useState<'text' | 'json'>('text');
+  const [includeAudio, setIncludeAudio] = useState(true);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [downloadMessage, setDownloadMessage] = useState('');
+
+  const audioFiles = useMemo(() => extractAudioFiles(records), [records]);
+  const hasAudio = audioFiles.length > 0;
 
   const textReport = useMemo(() => {
     return exportRecordsAsText(records);
@@ -40,19 +58,124 @@ export function ExportPage() {
     }
   };
 
-  const handleDownload = () => {
+  const getDatePrefix = () => {
+    return new Date().toLocaleDateString('zh-CN').replace(/\//g, '-');
+  };
+
+  const handleDownloadReport = async () => {
     const isText = exportFormat === 'text';
     const blob = new Blob([currentContent], {
       type: isText ? 'text/plain;charset=utf-8' : 'application/json;charset=utf-8',
     });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `狗叫记录_${new Date().toLocaleDateString('zh-CN')}.${isText ? 'txt' : 'json'}`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const fileName = `狗叫记录_${getDatePrefix()}.${isText ? 'txt' : 'json'}`;
+    await downloadBlob(blob, fileName);
+  };
+
+  const handleDownloadAll = async () => {
+    if (isDownloading) return;
+    setIsDownloading(true);
+    setDownloadProgress(0);
+    setDownloadMessage('正在准备导出文件...');
+
+    try {
+      const formats: ('text' | 'json')[] = [exportFormat];
+      const bundle = await prepareExportBundle(records, formats);
+
+      const allFiles: { fileName: string; blob: Blob }[] = [];
+      const datePrefix = getDatePrefix();
+
+      if (bundle.textReport) {
+        allFiles.push({
+          fileName: `狗叫记录_${datePrefix}.txt`,
+          blob: bundle.textReport,
+        });
+      }
+      if (bundle.jsonReport && exportFormat === 'json') {
+        allFiles.push({
+          fileName: `狗叫记录_${datePrefix}.json`,
+          blob: bundle.jsonReport,
+        });
+      }
+      if (includeAudio && hasAudio) {
+        allFiles.push(...bundle.audioFiles);
+        if (bundle.readme) {
+          allFiles.push({
+            fileName: `导出说明_${datePrefix}.txt`,
+            blob: bundle.readme,
+          });
+        }
+      }
+
+      const totalFiles = allFiles.length;
+      setDownloadMessage(`共 ${totalFiles} 个文件，开始下载...`);
+
+      for (let i = 0; i < allFiles.length; i++) {
+        const file = allFiles[i];
+        setDownloadProgress(Math.round(((i + 1) / totalFiles) * 100));
+        setDownloadMessage(`正在下载 (${i + 1}/${totalFiles})：${file.fileName}`);
+        await downloadBlob(file.blob, file.fileName);
+        if (i < allFiles.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 300));
+        }
+      }
+
+      setDownloadMessage(`✓ 下载完成！共 ${totalFiles} 个文件`);
+      setTimeout(() => {
+        setIsDownloading(false);
+        setDownloadProgress(0);
+        setDownloadMessage('');
+      }, 3000);
+    } catch (error) {
+      console.error('Export error:', error);
+      setDownloadMessage('导出失败，请重试');
+      setTimeout(() => {
+        setIsDownloading(false);
+        setDownloadProgress(0);
+        setDownloadMessage('');
+      }, 3000);
+    }
+  };
+
+  const handleDownloadAudioOnly = async () => {
+    if (isDownloading || !hasAudio) return;
+    setIsDownloading(true);
+    setDownloadProgress(0);
+
+    try {
+      const bundle = await prepareExportBundle(records, []);
+      const allFiles: { fileName: string; blob: Blob }[] = [...bundle.audioFiles];
+      if (bundle.readme) {
+        allFiles.push({
+          fileName: `导出说明_${getDatePrefix()}.txt`,
+          blob: bundle.readme,
+        });
+      }
+
+      const totalFiles = allFiles.length;
+      for (let i = 0; i < allFiles.length; i++) {
+        const file = allFiles[i];
+        setDownloadProgress(Math.round(((i + 1) / totalFiles) * 100));
+        setDownloadMessage(`下载录音 (${i + 1}/${totalFiles})：${file.fileName}`);
+        await downloadBlob(file.blob, file.fileName);
+        if (i < allFiles.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 300));
+        }
+      }
+
+      setDownloadMessage(`✓ 录音下载完成！共 ${bundle.audioFiles.length} 个文件`);
+      setTimeout(() => {
+        setIsDownloading(false);
+        setDownloadProgress(0);
+        setDownloadMessage('');
+      }, 3000);
+    } catch (error) {
+      setDownloadMessage('下载失败，请重试');
+      setTimeout(() => {
+        setIsDownloading(false);
+        setDownloadProgress(0);
+        setDownloadMessage('');
+      }, 3000);
+    }
   };
 
   if (records.length === 0) {
@@ -106,6 +229,29 @@ export function ExportPage() {
           </p>
         </motion.div>
 
+        {hasAudio && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 }}
+            className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-4 mb-6"
+          >
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                <FileAudio className="text-blue-600" size={20} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-blue-800">
+                  检测到 {audioFiles.length} 条录音
+                </div>
+                <div className="text-sm text-blue-600 mt-1">
+                  导出时可选择附带录音文件，方便作为沟通证据
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -136,6 +282,18 @@ export function ExportPage() {
               <div className="text-sm text-mint-700">日均次数</div>
             </div>
           </div>
+
+          {hasAudio && (
+            <div className="bg-indigo-50 rounded-xl p-4 mb-4">
+              <div className="flex items-center gap-2 mb-1">
+                <Music className="text-indigo-500" size={18} />
+                <span className="font-medium text-indigo-800">录音证据</span>
+              </div>
+              <p className="text-indigo-700 text-sm">
+                共绑定 <span className="font-bold">{audioFiles.length}</span> 条环境录音，可在导出时一并下载
+              </p>
+            </div>
+          )}
 
           {peakHourInfo && (
             <div className="bg-coral-50 rounded-xl p-4 mb-4">
@@ -234,10 +392,78 @@ export function ExportPage() {
             </button>
           </div>
 
+          {hasAudio && (
+            <motion.label
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              className="flex items-center justify-between p-4 bg-white rounded-xl shadow-soft cursor-pointer hover:bg-gray-50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center">
+                  <FileAudio className="text-indigo-600" size={18} />
+                </div>
+                <div>
+                  <div className="font-medium text-gray-800">附带录音文件</div>
+                  <div className="text-xs text-gray-500">
+                    将单独下载 {audioFiles.length} 个音频文件 + 对应关系说明
+                  </div>
+                </div>
+              </div>
+              <div className="relative">
+                <input
+                  type="checkbox"
+                  checked={includeAudio}
+                  onChange={(e) => setIncludeAudio(e.target.checked)}
+                  className="sr-only"
+                />
+                <div
+                  className={`w-12 h-7 rounded-full transition-colors ${
+                    includeAudio ? 'bg-indigo-500' : 'bg-gray-300'
+                  }`}
+                >
+                  <motion.div
+                    animate={{ x: includeAudio ? 22 : 2 }}
+                    transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                    className="w-5 h-5 rounded-full bg-white shadow-md absolute top-1"
+                  />
+                </div>
+              </div>
+            </motion.label>
+          )}
+
+          <AnimatePresence>
+            {isDownloading && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="bg-blue-50 border border-blue-200 rounded-xl p-4"
+              >
+                <div className="flex items-center gap-3 mb-2">
+                  <Loader2 className="text-blue-500 animate-spin" size={20} />
+                  <div className="flex-1 font-medium text-blue-800 text-sm truncate">
+                    {downloadMessage || '正在处理...'}
+                  </div>
+                </div>
+                <div className="h-2 bg-blue-100 rounded-full overflow-hidden">
+                  <motion.div
+                    animate={{ width: `${downloadProgress}%` }}
+                    transition={{ duration: 0.2 }}
+                    className="h-full bg-gradient-to-r from-blue-400 to-indigo-500 rounded-full"
+                  />
+                </div>
+                <div className="text-xs text-blue-600 mt-1 text-right">
+                  {downloadProgress}%
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <div className="flex gap-3">
             <button
               onClick={handleCopy}
-              className="flex-1 py-4 px-6 bg-mint-500 text-white rounded-xl font-medium hover:bg-mint-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-mint-200"
+              disabled={isDownloading}
+              className="flex-1 py-4 px-6 bg-mint-500 text-white rounded-xl font-medium hover:bg-mint-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-mint-200 disabled:opacity-50"
             >
               {copied ? (
                 <>
@@ -252,13 +478,48 @@ export function ExportPage() {
               )}
             </button>
             <button
-              onClick={handleDownload}
-              className="flex-1 py-4 px-6 bg-amber-500 text-white rounded-xl font-medium hover:bg-amber-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-200"
+              onClick={handleDownloadReport}
+              disabled={isDownloading}
+              className="flex-1 py-4 px-6 bg-amber-500 text-white rounded-xl font-medium hover:bg-amber-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-200 disabled:opacity-50"
             >
               <Download size={20} />
-              下载文件
+              仅报告
             </button>
           </div>
+
+          <button
+            onClick={handleDownloadAll}
+            disabled={isDownloading}
+            className="w-full py-4 px-6 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-xl font-medium hover:from-indigo-600 hover:to-purple-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-200 disabled:opacity-50"
+          >
+            {isDownloading ? (
+              <>
+                <Loader2 size={20} className="animate-spin" />
+                正在导出...
+              </>
+            ) : (
+              <>
+                <Download size={20} />
+                全部导出
+                {hasAudio && includeAudio && (
+                  <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">
+                    报告 + {audioFiles.length} 录音
+                  </span>
+                )}
+              </>
+            )}
+          </button>
+
+          {hasAudio && (
+            <button
+              onClick={handleDownloadAudioOnly}
+              disabled={isDownloading}
+              className="w-full py-3 px-6 border-2 border-indigo-200 text-indigo-600 rounded-xl font-medium hover:bg-indigo-50 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              <Music size={18} />
+              仅下载录音文件 ({audioFiles.length})
+            </button>
+          )}
         </motion.div>
 
         <motion.div
@@ -271,10 +532,34 @@ export function ExportPage() {
           <ul className="text-sm text-amber-700 space-y-1">
             <li>• 保持友好态度，用数据说话而非情绪</li>
             <li>• 说明狗叫对你的具体影响（如影响睡眠）</li>
+            {hasAudio && (
+              <li>• 🎵 录音文件可作为客观证据，增强说服力</li>
+            )}
             <li>• 可以提出建设性建议，共同寻找解决方案</li>
             <li>• 选择合适的时机沟通，避免对方忙碌时打扰</li>
           </ul>
         </motion.div>
+
+        {hasAudio && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.6 }}
+            className="mt-4 p-4 bg-blue-50 rounded-xl border border-blue-200"
+          >
+            <div className="flex items-start gap-2">
+              <Info className="text-blue-500 flex-shrink-0 mt-0.5" size={16} />
+              <div className="text-xs text-blue-700 space-y-1">
+                <p>
+                  <strong>浏览器限制说明：</strong>由于浏览器安全策略，无法直接打包下载为 ZIP 格式，将采用逐个文件下载的方式。
+                </p>
+                <p>
+                  首次下载时，浏览器可能会提示「允许此网站下载多个文件」，请选择「允许」以获取完整的录音文件。
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        )}
       </div>
     </div>
   );

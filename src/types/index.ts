@@ -5,6 +5,9 @@ export interface BarkRecord {
   dogDescription?: string;
   duration?: number;
   note?: string;
+  audioData?: string;
+  audioMimeType?: string;
+  audioDuration?: number;
   createdAt: number;
   updatedAt: number;
 }

@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Clock, Trash2, Edit2, MapPin, Dog, StickyNote, X, Check, MoreVertical } from 'lucide-react';
+import { Clock, Trash2, Edit2, MapPin, Dog, StickyNote, X, Check, MoreVertical, Volume2, VolumeX } from 'lucide-react';
 import { BarkRecord } from '@/types';
 import { formatFriendlyDateTime } from '@/utils/date';
+import { AudioPlayer } from '@/components/AudioPlayer';
 
 interface RecordItemProps {
   record: BarkRecord;
@@ -13,30 +14,41 @@ interface RecordItemProps {
 export function RecordItem({ record, onDelete, onUpdate }: RecordItemProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [showActions, setShowActions] = useState(false);
+  const [showAudioPlayer, setShowAudioPlayer] = useState(false);
   const [editLocation, setEditLocation] = useState(record.location || '');
   const [editDogDesc, setEditDogDesc] = useState(record.dogDescription || '');
   const [editNote, setEditNote] = useState(record.note || '');
+  const [editAudioRemoved, setEditAudioRemoved] = useState(false);
 
   useEffect(() => {
     setEditLocation(record.location || '');
     setEditDogDesc(record.dogDescription || '');
     setEditNote(record.note || '');
-  }, [record.location, record.dogDescription, record.note]);
+    setEditAudioRemoved(false);
+  }, [record.location, record.dogDescription, record.note, record.id]);
 
   const handleSave = () => {
-    onUpdate(record.id, {
+    const updates: Partial<BarkRecord> = {
       location: editLocation.trim() || undefined,
       dogDescription: editDogDesc.trim() || undefined,
       note: editNote.trim() || undefined,
-    });
+    };
+    if (editAudioRemoved) {
+      updates.audioData = undefined;
+      updates.audioMimeType = undefined;
+      updates.audioDuration = undefined;
+    }
+    onUpdate(record.id, updates);
     setIsEditing(false);
     setShowActions(false);
+    setShowAudioPlayer(false);
   };
 
   const handleCancel = () => {
     setEditLocation(record.location || '');
     setEditDogDesc(record.dogDescription || '');
     setEditNote(record.note || '');
+    setEditAudioRemoved(false);
     setIsEditing(false);
   };
 
@@ -49,6 +61,8 @@ export function RecordItem({ record, onDelete, onUpdate }: RecordItemProps) {
     if (isEditing) return;
     setShowActions(prev => !prev);
   };
+
+  const hasAudio = !!record.audioData && !editAudioRemoved;
 
   return (
     <motion.div
@@ -66,8 +80,27 @@ export function RecordItem({ record, onDelete, onUpdate }: RecordItemProps) {
         </div>
 
         <div className="flex-1 min-w-0" onClick={toggleActions}>
-          <div className="font-medium text-gray-800">
-            {formatFriendlyDateTime(record.timestamp)}
+          <div className="flex items-center gap-2">
+            <div className="font-medium text-gray-800">
+              {formatFriendlyDateTime(record.timestamp)}
+            </div>
+            {hasAudio && !isEditing && (
+              <motion.button
+                whileTap={{ scale: 0.9 }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowAudioPlayer(prev => !prev);
+                }}
+                className={`p-1.5 rounded-full transition-colors ${
+                  showAudioPlayer
+                    ? 'bg-amber-500 text-white'
+                    : 'bg-amber-50 text-amber-600 hover:bg-amber-100'
+                }`}
+                title={showAudioPlayer ? '收起播放器' : '播放录音'}
+              >
+                {showAudioPlayer ? <VolumeX size={14} /> : <Volume2 size={14} />}
+              </motion.button>
+            )}
           </div>
 
           <AnimatePresence mode="wait">
@@ -95,6 +128,12 @@ export function RecordItem({ record, onDelete, onUpdate }: RecordItemProps) {
                   <div className="flex items-start gap-2 text-sm text-gray-500">
                     <StickyNote size={14} className="mt-0.5 flex-shrink-0" />
                     <span>{record.note}</span>
+                  </div>
+                )}
+                {hasAudio && !showAudioPlayer && (
+                  <div className="flex items-center gap-2 text-sm text-amber-600">
+                    <Volume2 size={14} />
+                    <span>录音 {(record.audioDuration || 0)}s · 点击图标播放</span>
                   </div>
                 )}
               </motion.div>
@@ -128,6 +167,34 @@ export function RecordItem({ record, onDelete, onUpdate }: RecordItemProps) {
                   rows={2}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none"
                 />
+                {hasAudio && (
+                  <div className="flex items-center justify-between p-3 bg-amber-50 rounded-lg">
+                    <div className="flex items-center gap-2 text-sm text-amber-700">
+                      <Volume2 size={16} />
+                      <span>已绑定录音 ({(record.audioDuration || 0)}s)</span>
+                    </div>
+                    <button
+                      onClick={() => setEditAudioRemoved(true)}
+                      className="text-xs px-3 py-1 bg-white text-coral-600 rounded-md hover:bg-coral-50 transition-colors border border-coral-200"
+                    >
+                      移除录音
+                    </button>
+                  </div>
+                )}
+                {editAudioRemoved && (
+                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center gap-2 text-sm text-gray-500">
+                      <VolumeX size={16} />
+                      <span>录音将在保存时被移除</span>
+                    </div>
+                    <button
+                      onClick={() => setEditAudioRemoved(false)}
+                      className="text-xs px-3 py-1 bg-white text-amber-600 rounded-md hover:bg-amber-50 transition-colors border border-amber-200"
+                    >
+                      撤销移除
+                    </button>
+                  </div>
+                )}
                 <div className="flex gap-2 justify-end">
                   <button
                     onClick={handleCancel}
@@ -143,6 +210,27 @@ export function RecordItem({ record, onDelete, onUpdate }: RecordItemProps) {
                     保存
                   </button>
                 </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence>
+            {showAudioPlayer && hasAudio && !isEditing && (
+              <motion.div
+                initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                animate={{ opacity: 1, height: 'auto', marginTop: 12 }}
+                exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <AudioPlayer
+                  audioData={record.audioData!}
+                  audioMimeType={record.audioMimeType}
+                  duration={record.audioDuration}
+                  compact={false}
+                  onClose={() => setShowAudioPlayer(false)}
+                />
               </motion.div>
             )}
           </AnimatePresence>

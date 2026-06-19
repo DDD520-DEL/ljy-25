@@ -3,6 +3,12 @@ import { useBarkStore } from '@/store/useBarkStore';
 import { BarkRecord } from '@/types';
 import { getTodayRecords, groupRecordsByDate } from '@/utils/statistics';
 
+interface AudioData {
+  data: string;
+  mimeType: string;
+  duration: number;
+}
+
 export function useBarkRecords() {
   const records = useBarkStore((state) => state.records);
   const addRecord = useBarkStore((state) => state.addRecord);
@@ -34,8 +40,14 @@ export function useBarkRecords() {
     return record;
   }, [addRecord, settings.vibrationEnabled]);
 
-  const handleQuickRecord = useCallback(() => {
-    return handleAddRecord();
+  const handleQuickRecord = useCallback((audio?: AudioData) => {
+    const data: Partial<BarkRecord> = {};
+    if (audio) {
+      data.audioData = audio.data;
+      data.audioMimeType = audio.mimeType;
+      data.audioDuration = audio.duration;
+    }
+    return handleAddRecord(undefined, data);
   }, [handleAddRecord]);
 
   return {
