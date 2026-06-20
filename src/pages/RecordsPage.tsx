@@ -57,6 +57,42 @@ export function RecordsPage() {
 
   const allTags = useMemo(() => getAllTags(records), [records]);
 
+  const allLocations = useMemo(() => {
+    const locationCount = new Map<string, number>();
+    records.forEach((r) => {
+      if (r.location && r.location.trim()) {
+        const loc = r.location.trim();
+        locationCount.set(loc, (locationCount.get(loc) || 0) + 1);
+      }
+    });
+    return Array.from(locationCount.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([location, count]) => ({ location, count }));
+  }, [records]);
+
+  const selectedRecordsLocations = useMemo(() => {
+    const ids = Array.from(selectedRecordIds);
+    const locationCount = new Map<string, number>();
+    let noLocationCount = 0;
+    ids.forEach((id) => {
+      const record = records.find((r) => r.id === id);
+      if (record) {
+        if (record.location && record.location.trim()) {
+          const loc = record.location.trim();
+          locationCount.set(loc, (locationCount.get(loc) || 0) + 1);
+        } else {
+          noLocationCount++;
+        }
+      }
+    });
+    return {
+      locations: Array.from(locationCount.entries())
+        .sort((a, b) => b[1] - a[1])
+        .map(([location, count]) => ({ location, count })),
+      noLocationCount,
+    };
+  }, [selectedRecordIds, records]);
+
   const filteredRecords = useMemo(() => {
     let result = records;
 
@@ -159,12 +195,34 @@ export function RecordsPage() {
     switch (batchAction) {
       case 'location': {
         const trimmed = batchLocation.trim();
+        const hasExistingLocations = selectedRecordsLocations.locations.length > 0;
+        const hasNoLocationRecords = selectedRecordsLocations.noLocationCount > 0;
+
         if (!trimmed) {
-          showToast('error', '请输入位置信息');
-          return;
+          if (!hasExistingLocations) {
+            showToast('info', '所选记录均无位置信息，无需操作');
+            return;
+          }
+          const confirmed = window.confirm(
+            `确定要清除选中 ${ids.length} 条记录的位置信息吗？\n此操作会将 ${selectedRecordsLocations.locations.reduce((s, x) => s + x.count, 0)} 条记录的位置设为空。`
+          );
+          if (!confirmed) return;
+          const updated = batchUpdateRecords(ids, { location: undefined });
+          showToast('success', `已成功清除 ${updated} 条记录的位置`);
+        } else {
+          const alreadySetCount = selectedRecordsLocations.locations.find(
+            (x) => x.location === trimmed
+          )?.count || 0;
+          const updated = batchUpdateRecords(ids, { location: trimmed });
+          if (alreadySetCount === ids.length) {
+            showToast('info', `所有选中记录的位置已是"${trimmed}"`);
+          } else {
+            showToast(
+              'success',
+              `已成功将 ${updated} 条记录的位置设置为"${trimmed}"`
+            );
+          }
         }
-        const updated = batchUpdateRecords(ids, { location: trimmed });
-        showToast('success', `已成功更新 ${updated} 条记录的位置`);
         break;
       }
       case 'tags': {
@@ -721,18 +779,86 @@ export function RecordsPage() {
 
               <div className="mb-6">
                 {batchAction === 'location' && (
-                  <div>
-                    <p className="text-gray-600 mb-3">
-                      将为选中的 {selectedRecordIds.size} 条记录设置新位置：
-                    </p>
-                    <input
-                      type="text"
-                      placeholder="输入新位置（如：3号楼东侧）"
-                      value={batchLocation}
-                      onChange={(e) => setBatchLocation(e.target.value)}
-                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
-                      autoFocus
-                    />
+                  <div className="space-y-4">
+                    {selectedRecordsLocations.locations.length > 0 && (
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                        <div className="text-xs text-amber-700 font-medium mb-2 flex items-center gap-1">
+                          <MapPin size={12} />
+                          当前选中记录的位置分布：
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {selectedRecordsLocations.locations.slice(0, 5).map(({ location, count }) => (
+                            <span
+                              key={location}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-white border border-amber-300 text-amber-700 rounded-full"
+                            >
+                              {location}
+                              <span className="font-medium">×{count}</span>
+                            </span>
+                          ))}
+                          {selectedRecordsLocations.locations.length > 5 && (
+                            <span className="inline-flex items-center px-2 py-0.5 text-xs text-gray-500">
+                              +{selectedRecordsLocations.locations.length - 5} 更多
+                            </span>
+                          )}
+                          {selectedRecordsLocations.noLocationCount > 0 && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-gray-100 border border-gray-300 text-gray-600 rounded-full">
+                              无位置
+                              <span className="font-medium">×{selectedRecordsLocations.noLocationCount}</span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    <div>
+                      <p className="text-gray-600 mb-2 text-sm">
+                        将为选中的 <span className="font-medium text-amber-700">{selectedRecordIds.size}</span> 条记录设置新位置：
+                      </p>
+                      <input
+                        type="text"
+                        placeholder="输入新位置（如：3号楼东侧）"
+                        value={batchLocation}
+                        onChange={(e) => setBatchLocation(e.target.value)}
+                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                        autoFocus
+                      />
+                    </div>
+
+                    {allLocations.length > 0 && (
+                      <div>
+                        <div className="text-xs text-gray-500 mb-2 flex items-center gap-1">
+                          <Info size={12} />
+                          常用位置快捷选择：
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {allLocations.slice(0, 8).map(({ location, count }) => (
+                            <button
+                              key={location}
+                              onClick={() => setBatchLocation(location)}
+                              className={`px-2.5 py-1.5 text-xs rounded-lg border transition-all ${
+                                batchLocation === location
+                                  ? 'bg-amber-500 border-amber-500 text-white'
+                                  : 'bg-white border-gray-200 text-gray-600 hover:border-amber-300 hover:text-amber-700 hover:bg-amber-50'
+                              }`}
+                            >
+                              {location}
+                              <span className={`ml-1 ${batchLocation === location ? 'text-amber-100' : 'text-gray-400'}`}>
+                                ({count})
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <button
+                      onClick={() => setBatchLocation('')}
+                      className="w-full py-2 text-xs text-gray-500 hover:text-coral-600 hover:bg-coral-50 rounded-lg transition-colors flex items-center justify-center gap-1"
+                    >
+                      <X size={12} />
+                      清除位置（将选中记录的位置设为空）
+                    </button>
                   </div>
                 )}
 
@@ -771,13 +897,16 @@ export function RecordsPage() {
                 </button>
                 <button
                   onClick={handleBatchActionConfirm}
-                  className={`flex-1 py-2.5 px-4 text-white rounded-xl transition-colors ${
+                  className={`flex-1 py-2.5 px-4 rounded-xl transition-colors ${
                     batchAction === 'delete'
-                      ? 'bg-coral-500 hover:bg-coral-600'
-                      : 'bg-amber-500 hover:bg-amber-600'
+                      ? 'bg-coral-500 text-white hover:bg-coral-600'
+                      : batchAction === 'location' && !batchLocation.trim()
+                      ? 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                      : 'bg-amber-500 text-white hover:bg-amber-600'
                   }`}
                 >
-                  {batchAction === 'location' && '确认修改'}
+                  {batchAction === 'location' &&
+                    (batchLocation.trim() ? '确认修改' : '清除位置')}
                   {batchAction === 'tags' && '确认添加'}
                   {batchAction === 'delete' && '确认删除'}
                 </button>
