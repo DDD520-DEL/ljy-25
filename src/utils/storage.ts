@@ -442,3 +442,269 @@ export function readFileAsText(file: File): Promise<string> {
     reader.readAsText(file, 'utf-8');
   });
 }
+
+export interface ExportProgress {
+  stage: 'collecting' | 'serializing' | 'creating-file' | 'downloading';
+  stageLabel: string;
+  percent: number;
+  message: string;
+  estimatedSize?: string;
+  recordCount?: number;
+  dogCount?: number;
+  withAudio?: number;
+}
+
+export interface ImportProgress {
+  stage: 'reading' | 'parsing' | 'validating' | 'ready';
+  stageLabel: string;
+  percent: number;
+  message: string;
+  fileSize?: string;
+  fileName?: string;
+  readBytes?: number;
+  totalBytes?: number;
+}
+
+export type ExportProgressCallback = (progress: ExportProgress) => void;
+export type ImportProgressCallback = (progress: ImportProgress) => void;
+
+export function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+export function estimateBackupSize(bundle: BackupDataBundle): number {
+  const records = bundle.data.bark.records.length;
+  const dogs = bundle.data.bark.dogs.length;
+  const hasAudio = bundle.data.bark.records.filter(r => r.audioData).length;
+  const avgRecordSize = 800;
+  const avgDogSize = 300;
+  const avgAudioSize = 50000;
+  const settingsSize = 1000;
+  const overhead = 500;
+  return records * avgRecordSize + dogs * avgDogSize + hasAudio * avgAudioSize + settingsSize + overhead;
+}
+
+export async function serializeBackupBundleWithProgress(
+  bundle: BackupDataBundle,
+  onProgress?: ExportProgressCallback,
+  yieldEveryMs = 30
+): Promise<string> {
+  const records = bundle.data.bark.records;
+  const totalRecords = records.length;
+  const hasAudio = records.filter(r => r.audioData).length;
+
+  const parts: string[] = [];
+
+  parts.push('{\n');
+  parts.push(`  "version": ${JSON.stringify(bundle.version)},\n`);
+  parts.push(`  "exportedAt": ${bundle.exportedAt},\n`);
+  parts.push(`  "app": ${JSON.stringify(bundle.app)},\n`);
+  parts.push(`  "data": {\n`);
+  parts.push(`    "bark": {\n`);
+
+  parts.push(`      "records": [\n`);
+
+  let lastYield = Date.now();
+
+  for (let i = 0; i < totalRecords; i++) {
+    const record = records[i];
+    const recordJson = JSON.stringify(record, null, 8);
+    parts.push(recordJson);
+    if (i < totalRecords - 1) {
+      parts.push(',\n');
+    }
+
+    const now = Date.now();
+    if (now - lastYield >= yieldEveryMs && onProgress) {
+      const recordProgress = (i + 1) / Math.max(totalRecords, 1);
+      const percent = Math.round(10 + recordProgress * 70);
+      onProgress({
+        stage: 'serializing',
+        stageLabel: '正在序列化',
+        percent,
+        message: `正在处理记录 ${i + 1} / ${totalRecords}${hasAudio > 0 ? `（含录音 ${hasAudio} 条）` : ''}`,
+        recordCount: totalRecords,
+        dogCount: bundle.data.bark.dogs.length,
+        withAudio: hasAudio,
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 0));
+      lastYield = Date.now();
+    }
+  }
+
+  parts.push('\n      ],\n');
+
+  parts.push(`      "dogs": `);
+  parts.push(JSON.stringify(bundle.data.bark.dogs, null, 6));
+  parts.push(',\n');
+
+  parts.push(`      "settings": `);
+  parts.push(JSON.stringify(bundle.data.bark.settings, null, 6));
+  parts.push(',\n');
+
+  parts.push(`      "deletedRecordIds": `);
+  parts.push(JSON.stringify(bundle.data.bark.deletedRecordIds, null, 6));
+  parts.push(',\n');
+
+  parts.push(`      "deletedDogIds": `);
+  parts.push(JSON.stringify(bundle.data.bark.deletedDogIds, null, 6));
+  parts.push('\n    }');
+
+  if (bundle.data.auth) {
+    parts.push(',\n    "auth": ');
+    parts.push(JSON.stringify(bundle.data.auth, null, 4));
+  }
+
+  if (bundle.data.admin) {
+    parts.push(',\n    "admin": ');
+    parts.push(JSON.stringify(bundle.data.admin, null, 4));
+  }
+
+  parts.push('\n  }\n}');
+
+  return parts.join('');
+}
+
+export async function exportBackupAsFileWithProgress(
+  bundle: BackupDataBundle,
+  onProgress?: ExportProgressCallback
+): Promise<void> {
+  onProgress?.({
+    stage: 'creating-file',
+    stageLabel: '正在生成文件',
+    percent: 85,
+    message: '正在生成 JSON 文件...',
+    estimatedSize: formatBytes(estimateBackupSize(bundle)),
+  });
+
+  await new Promise(resolve => setTimeout(resolve, 50));
+
+  const content = await serializeBackupBundleWithProgress(bundle, onProgress);
+  const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
+  const fileName = getBackupFileName();
+
+  onProgress?.({
+    stage: 'downloading',
+    stageLabel: '正在下载',
+    percent: 95,
+    message: `正在下载文件 (${formatBytes(blob.size)})...`,
+    estimatedSize: formatBytes(blob.size),
+  });
+
+  await new Promise(resolve => setTimeout(resolve, 100));
+  await downloadBlob(blob, fileName);
+
+  onProgress?.({
+    stage: 'downloading',
+    stageLabel: '下载完成',
+    percent: 100,
+    message: `导出完成！文件大小：${formatBytes(blob.size)}`,
+    estimatedSize: formatBytes(blob.size),
+  });
+}
+
+export function readFileAsTextWithProgress(
+  file: File,
+  onProgress?: ImportProgressCallback
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) {
+        const percent = Math.round((e.loaded / e.total) * 60);
+        onProgress({
+          stage: 'reading',
+          stageLabel: '正在读取文件',
+          percent,
+          message: `已读取 ${formatBytes(e.loaded)} / ${formatBytes(e.total)}`,
+          fileSize: formatBytes(file.size),
+          fileName: file.name,
+          readBytes: e.loaded,
+          totalBytes: e.total,
+        });
+      }
+    };
+
+    reader.onload = async () => {
+      if (typeof reader.result === 'string') {
+        onProgress?.({
+          stage: 'parsing',
+          stageLabel: '正在解析',
+          percent: 70,
+          message: '正在解析 JSON 数据...',
+          fileSize: formatBytes(file.size),
+          fileName: file.name,
+        });
+
+        await new Promise(resolve => setTimeout(resolve, 30));
+        resolve(reader.result);
+      } else {
+        reject(new Error('无法读取文件内容'));
+      }
+    };
+
+    reader.onerror = () => {
+      reject(new Error('读取文件失败'));
+    };
+
+    reader.readAsText(file, 'utf-8');
+  });
+}
+
+export async function parseBackupBundleWithProgress(
+  content: string,
+  fileSize: number,
+  fileName: string,
+  onProgress?: ImportProgressCallback
+): Promise<BackupDataBundle> {
+  try {
+    onProgress?.({
+      stage: 'parsing',
+      stageLabel: '正在解析',
+      percent: 75,
+      message: '正在解析 JSON 数据...',
+      fileSize: formatBytes(fileSize),
+      fileName,
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 30));
+    const parsed = JSON.parse(content);
+
+    onProgress?.({
+      stage: 'validating',
+      stageLabel: '正在校验',
+      percent: 90,
+      message: '正在验证备份文件格式...',
+      fileSize: formatBytes(fileSize),
+      fileName,
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 30));
+
+    if (!validateBackupBundle(parsed)) {
+      throw new Error('备份文件格式无效');
+    }
+
+    onProgress?.({
+      stage: 'ready',
+      stageLabel: '准备就绪',
+      percent: 100,
+      message: '备份文件解析完成',
+      fileSize: formatBytes(fileSize),
+      fileName,
+    });
+
+    return parsed;
+  } catch (err) {
+    if (err instanceof SyntaxError) {
+      throw new Error('备份文件不是有效的 JSON 格式');
+    }
+    throw err;
+  }
+}

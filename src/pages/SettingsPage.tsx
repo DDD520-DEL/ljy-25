@@ -43,12 +43,14 @@ import * as heatmapService from '@/services/heatmapService';
 import { getGridSizeMeters } from '@/services/locationService';
 import {
   createBackupBundle,
-  exportBackupAsFile,
-  parseBackupBundle,
-  readFileAsText,
+  exportBackupAsFileWithProgress,
+  parseBackupBundleWithProgress,
+  readFileAsTextWithProgress,
   getRestoreSummary,
   BackupDataBundle,
   RestoreSummary,
+  ExportProgress,
+  ImportProgress,
 } from '@/utils/storage';
 
 function formatDateTime(timestamp: number): string {
@@ -129,6 +131,11 @@ export function SettingsPage() {
   } | null>(null);
   const [showConfirmRestore, setShowConfirmRestore] = useState(false);
   const [includeAuthInBackup, setIncludeAuthInBackup] = useState(true);
+
+  const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
+  const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
+  const [isRestoring, setIsRestoring] = useState(false);
+  const [restoreError, setRestoreError] = useState<string>('');
 
   const replaceAllData = useBarkStore((s) => s.replaceAllData);
   const restoreAuthData = useAuthStore((s) => s.restoreAuthData);
@@ -331,6 +338,13 @@ export function SettingsPage() {
     setIsExporting(true);
     setImportError('');
     setImportSuccess('');
+    setExportProgress({
+      stage: 'collecting',
+      stageLabel: '正在收集数据',
+      percent: 5,
+      message: '正在准备导出数据...',
+    });
+
     try {
       const barkState = useBarkStore.getState();
       const authState = useAuthStore.getState();
@@ -359,15 +373,33 @@ export function SettingsPage() {
           }
         : undefined;
 
+      setExportProgress({
+        stage: 'collecting',
+        stageLabel: '正在收集数据',
+        percent: 8,
+        message: `收集到 ${barkData.records.length} 条记录，${barkData.dogs.length} 只狗狗资料`,
+        recordCount: barkData.records.length,
+        dogCount: barkData.dogs.length,
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
       const bundle = createBackupBundle(barkData, authData, adminData);
-      await exportBackupAsFile(bundle);
+
+      await exportBackupAsFileWithProgress(bundle, (progress) => {
+        setExportProgress(progress);
+      });
 
       const count = barkData.records.length;
       const dogCount = barkData.dogs.length;
       setImportSuccess(`备份成功！已导出 ${count} 条记录，${dogCount} 只狗狗资料`);
-      setTimeout(() => setImportSuccess(''), 5000);
+      setTimeout(() => {
+        setImportSuccess('');
+        setExportProgress(null);
+      }, 5000);
     } catch (err) {
       setImportError(err instanceof Error ? err.message : '导出备份失败');
+      setExportProgress(null);
     } finally {
       setIsExporting(false);
     }
@@ -381,16 +413,39 @@ export function SettingsPage() {
     setImportSuccess('');
     setIsImporting(true);
     setPendingRestore(null);
+    setImportProgress({
+      stage: 'reading',
+      stageLabel: '开始读取',
+      percent: 0,
+      message: `准备读取文件：${file.name}`,
+      fileSize: (file.size / 1024 / 1024).toFixed(2) + ' MB',
+      fileName: file.name,
+      totalBytes: file.size,
+    });
 
     try {
-      const content = await readFileAsText(file);
-      const bundle = parseBackupBundle(content);
+      const content = await readFileAsTextWithProgress(file, (progress) => {
+        setImportProgress(progress);
+      });
+
+      const bundle = await parseBackupBundleWithProgress(
+        content,
+        file.size,
+        file.name,
+        (progress) => {
+          setImportProgress(progress);
+        }
+      );
       const summary = getRestoreSummary(bundle);
 
       setPendingRestore({ bundle, summary, fileName: file.name });
+
+      await new Promise(resolve => setTimeout(resolve, 300));
+      setImportProgress(null);
       setShowConfirmRestore(true);
     } catch (err) {
       setImportError(err instanceof Error ? err.message : '读取备份文件失败');
+      setImportProgress(null);
     } finally {
       setIsImporting(false);
       e.target.value = '';
@@ -399,6 +454,9 @@ export function SettingsPage() {
 
   const handleConfirmRestore = async () => {
     if (!pendingRestore) return;
+
+    setIsRestoring(true);
+    setRestoreError('');
 
     try {
       const { bundle } = pendingRestore;
@@ -424,16 +482,20 @@ export function SettingsPage() {
       setImportSuccess(`恢复成功！已导入 ${count} 条记录，${dogCount} 只狗狗资料`);
       setTimeout(() => setImportSuccess(''), 5000);
     } catch (err) {
-      setImportError(err instanceof Error ? err.message : '恢复数据失败');
+      setRestoreError(err instanceof Error ? err.message : '恢复数据失败');
     } finally {
-      setShowConfirmRestore(false);
-      setPendingRestore(null);
+      setIsRestoring(false);
+      if (!restoreError) {
+        setShowConfirmRestore(false);
+        setPendingRestore(null);
+      }
     }
   };
 
   const handleCancelRestore = () => {
     setShowConfirmRestore(false);
     setPendingRestore(null);
+    setRestoreError('');
   };
 
   const renderAuthSection = () => {
@@ -1571,23 +1633,139 @@ export function SettingsPage() {
               </div>
             </div>
 
-            <button
-              onClick={handleExportBackup}
-              disabled={isExporting}
-              className="w-full py-3 bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-xl text-sm font-medium hover:from-purple-600 hover:to-indigo-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50 active:scale-[0.98] shadow-lg shadow-purple-200"
-            >
-              {isExporting ? (
-                <>
-                  <Loader2 size={18} className="animate-spin" />
-                  正在导出...
-                </>
+            <AnimatePresence mode="wait">
+              {exportProgress ? (
+                <motion.div
+                  key="export-progress"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl p-4 border border-purple-200 overflow-hidden"
+                >
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
+                      <Loader2 size={20} className="text-purple-600 animate-spin" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-0.5">
+                        <span className="text-sm font-medium text-gray-800">
+                          {exportProgress.stageLabel}
+                        </span>
+                        <span className="text-sm font-bold text-purple-600">
+                          {exportProgress.percent}%
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500 truncate">
+                        {exportProgress.message}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="h-2 bg-white rounded-full overflow-hidden shadow-inner">
+                    <motion.div
+                      className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 rounded-full"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${exportProgress.percent}%` }}
+                      transition={{ duration: 0.3, ease: 'easeOut' }}
+                    />
+                  </div>
+
+                  {(exportProgress.recordCount !== undefined || exportProgress.estimatedSize) && (
+                    <div className="mt-3 grid grid-cols-3 gap-2">
+                      {exportProgress.recordCount !== undefined && (
+                        <div className="bg-white/70 rounded-lg p-2 text-center">
+                          <div className="text-lg font-bold text-purple-600">
+                            {exportProgress.recordCount}
+                          </div>
+                          <div className="text-xs text-gray-500">条记录</div>
+                        </div>
+                      )}
+                      {exportProgress.dogCount !== undefined && (
+                        <div className="bg-white/70 rounded-lg p-2 text-center">
+                          <div className="text-lg font-bold text-indigo-600">
+                            {exportProgress.dogCount}
+                          </div>
+                          <div className="text-xs text-gray-500">只狗狗</div>
+                        </div>
+                      )}
+                      {exportProgress.estimatedSize && (
+                        <div className="bg-white/70 rounded-lg p-2 text-center">
+                          <div className="text-lg font-bold text-blue-600">
+                            {exportProgress.estimatedSize}
+                          </div>
+                          <div className="text-xs text-gray-500">文件大小</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="mt-3 flex items-center justify-between gap-2 text-xs">
+                    {(['collecting', 'serializing', 'creating-file', 'downloading'] as const).map((stage, idx) => {
+                      const stageLabels: Record<string, string> = {
+                        'collecting': '收集数据',
+                        'serializing': '序列化',
+                        'creating-file': '生成文件',
+                        'downloading': '下载',
+                      };
+                      const stageOrder = ['collecting', 'serializing', 'creating-file', 'downloading'];
+                      const currentIdx = stageOrder.indexOf(exportProgress.stage);
+                      const thisIdx = stageOrder.indexOf(stage);
+                      const isDone = thisIdx < currentIdx;
+                      const isCurrent = thisIdx === currentIdx;
+
+                      return (
+                        <div key={stage} className="flex items-center gap-1 flex-1">
+                          <div
+                            className={`w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 ${
+                              isDone
+                                ? 'bg-mint-500'
+                                : isCurrent
+                                ? 'bg-purple-500 ring-2 ring-purple-200'
+                                : 'bg-gray-300'
+                            }`}
+                          >
+                            {isDone ? (
+                              <Check size={10} className="text-white" />
+                            ) : isCurrent ? (
+                              <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                            ) : null}
+                          </div>
+                          <span
+                            className={`text-xs truncate ${
+                              isDone || isCurrent ? 'text-gray-700' : 'text-gray-400'
+                            }`}
+                          >
+                            {stageLabels[stage]}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </motion.div>
               ) : (
-                <>
-                  <Download size={18} />
-                  一键导出备份 (JSON)
-                </>
+                <motion.button
+                  key="export-button"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  onClick={handleExportBackup}
+                  disabled={isExporting || isImporting}
+                  className="w-full py-3 bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-xl text-sm font-medium hover:from-purple-600 hover:to-indigo-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50 active:scale-[0.98] shadow-lg shadow-purple-200 overflow-hidden"
+                >
+                  {isExporting ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin" />
+                      正在导出...
+                    </>
+                  ) : (
+                    <>
+                      <Download size={18} />
+                      一键导出备份 (JSON)
+                    </>
+                  )}
+                </motion.button>
               )}
-            </button>
+            </AnimatePresence>
 
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
@@ -1598,34 +1776,151 @@ export function SettingsPage() {
               </div>
             </div>
 
-            <label className="block w-full">
-              <input
-                type="file"
-                accept=".json,application/json"
-                onChange={handleImportFileSelect}
-                className="hidden"
-                disabled={isImporting}
-              />
-              <div
-                className={`w-full py-3 border-2 border-dashed rounded-xl text-sm font-medium flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                  isImporting
-                    ? 'border-gray-300 bg-gray-50 text-gray-400'
-                    : 'border-purple-300 bg-purple-50 text-purple-700 hover:bg-purple-100 hover:border-purple-400'
-                }`}
-              >
-                {isImporting ? (
-                  <>
-                    <Loader2 size={18} className="animate-spin" />
-                    正在读取...
-                  </>
-                ) : (
-                  <>
-                    <Upload size={18} />
-                    选择备份文件恢复
-                  </>
-                )}
-              </div>
-            </label>
+            <AnimatePresence mode="wait">
+              {importProgress ? (
+                <motion.div
+                  key="import-progress"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl p-4 border border-purple-200 overflow-hidden"
+                >
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
+                      <Loader2 size={20} className="text-purple-600 animate-spin" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-0.5">
+                        <span className="text-sm font-medium text-gray-800">
+                          {importProgress.stageLabel}
+                        </span>
+                        <span className="text-sm font-bold text-purple-600">
+                          {importProgress.percent}%
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500 truncate">
+                        {importProgress.message}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="h-2 bg-white rounded-full overflow-hidden shadow-inner mb-3">
+                    <motion.div
+                      className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 rounded-full"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${importProgress.percent}%` }}
+                      transition={{ duration: 0.3, ease: 'easeOut' }}
+                    />
+                  </div>
+
+                  {importProgress.fileName && (
+                    <div className="bg-white/70 rounded-lg p-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <FileJson size={16} className="text-purple-600 flex-shrink-0" />
+                        <span className="text-xs font-medium text-gray-700 truncate">
+                          {importProgress.fileName}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        {importProgress.fileSize && (
+                          <div>
+                            <span className="text-gray-500">文件大小：</span>
+                            <span className="font-medium text-gray-700">{importProgress.fileSize}</span>
+                          </div>
+                        )}
+                        {importProgress.readBytes !== undefined && importProgress.totalBytes !== undefined && (
+                          <div>
+                            <span className="text-gray-500">已读取：</span>
+                            <span className="font-medium text-purple-600">
+                              {Math.round((importProgress.readBytes / importProgress.totalBytes) * 100)}%
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-3 flex items-center gap-2 text-xs">
+                    {(['reading', 'parsing', 'validating', 'ready'] as const).map((stage, idx) => {
+                      const stageLabels: Record<string, string> = {
+                        'reading': '读取文件',
+                        'parsing': '解析JSON',
+                        'validating': '校验格式',
+                        'ready': '完成',
+                      };
+                      const stageOrder = ['reading', 'parsing', 'validating', 'ready'];
+                      const currentIdx = stageOrder.indexOf(importProgress.stage);
+                      const thisIdx = stageOrder.indexOf(stage);
+                      const isDone = thisIdx < currentIdx;
+                      const isCurrent = thisIdx === currentIdx;
+
+                      return (
+                        <div key={stage} className="flex items-center gap-1 flex-1">
+                          <div
+                            className={`w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 ${
+                              isDone
+                                ? 'bg-mint-500'
+                                : isCurrent
+                                ? 'bg-purple-500 ring-2 ring-purple-200'
+                                : 'bg-gray-300'
+                            }`}
+                          >
+                            {isDone ? (
+                              <Check size={10} className="text-white" />
+                            ) : isCurrent ? (
+                              <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                            ) : null}
+                          </div>
+                          <span
+                            className={`text-xs truncate ${
+                              isDone || isCurrent ? 'text-gray-700' : 'text-gray-400'
+                            }`}
+                          >
+                            {stageLabels[stage]}
+                          </span>
+                          {idx < 3 && <div className="flex-1 h-px bg-gray-200 mx-1" />}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </motion.div>
+              ) : (
+                <motion.label
+                  key="import-button"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="block w-full overflow-hidden"
+                >
+                  <input
+                    type="file"
+                    accept=".json,application/json"
+                    onChange={handleImportFileSelect}
+                    className="hidden"
+                    disabled={isImporting || isExporting}
+                  />
+                  <div
+                    className={`w-full py-3 border-2 border-dashed rounded-xl text-sm font-medium flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                      isImporting || isExporting
+                        ? 'border-gray-300 bg-gray-50 text-gray-400 cursor-not-allowed'
+                        : 'border-purple-300 bg-purple-50 text-purple-700 hover:bg-purple-100 hover:border-purple-400'
+                    }`}
+                  >
+                    {isImporting ? (
+                      <>
+                        <Loader2 size={18} className="animate-spin" />
+                        正在读取...
+                      </>
+                    ) : (
+                      <>
+                        <Upload size={18} />
+                        选择备份文件恢复
+                      </>
+                    )}
+                  </div>
+                </motion.label>
+              )}
+            </AnimatePresence>
 
             <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl">
               <AlertTriangle className="text-amber-600 flex-shrink-0 mt-0.5" size={16} />
@@ -1667,6 +1962,13 @@ export function SettingsPage() {
                 </div>
 
                 <div className="p-4 space-y-4">
+                  {restoreError && (
+                    <div className="flex items-start gap-2 p-3 bg-coral-50 border border-coral-200 rounded-xl">
+                      <AlertCircle className="text-coral-500 flex-shrink-0 mt-0.5" size={16} />
+                      <p className="text-sm text-coral-700">{restoreError}</p>
+                    </div>
+                  )}
+
                   <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
                     <p className="text-sm text-amber-800 font-medium">
                       ⚠️ 此操作将覆盖当前所有本地数据，且无法撤销。
@@ -1722,15 +2024,24 @@ export function SettingsPage() {
                 <div className="p-4 border-t border-gray-100 flex gap-3">
                   <button
                     onClick={handleCancelRestore}
-                    className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors"
+                    disabled={isRestoring}
+                    className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors disabled:opacity-50"
                   >
                     取消
                   </button>
                   <button
                     onClick={handleConfirmRestore}
-                    className="flex-1 py-2.5 bg-gradient-to-r from-amber-500 to-coral-500 text-white rounded-xl text-sm font-medium hover:from-amber-600 hover:to-coral-600 transition-all shadow-md shadow-amber-200 active:scale-[0.98]"
+                    disabled={isRestoring}
+                    className="flex-1 py-2.5 bg-gradient-to-r from-amber-500 to-coral-500 text-white rounded-xl text-sm font-medium hover:from-amber-600 hover:to-coral-600 transition-all shadow-md shadow-amber-200 active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2"
                   >
-                    确认恢复
+                    {isRestoring ? (
+                      <>
+                        <Loader2 size={16} className="animate-spin" />
+                        正在恢复...
+                      </>
+                    ) : (
+                      '确认恢复'
+                    )}
                   </button>
                 </div>
               </motion.div>
