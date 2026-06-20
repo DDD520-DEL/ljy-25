@@ -27,14 +27,29 @@ import {
   Shield,
   Ruler,
   Thermometer,
+  Download,
+  Upload,
+  HardDrive,
+  AlertTriangle,
+  FileJson,
 } from 'lucide-react';
 import { useBarkStore } from '@/store/useBarkStore';
 import { useReminders } from '@/hooks/useReminders';
 import { useAuthStore } from '@/store/useAuthStore';
+import { useAdminStore } from '@/store/useAdminStore';
 import { useSync } from '@/hooks/useSync';
 import { useLocationSharing, CleanupLogEntry, HeatmapStats } from '@/hooks/useLocationSharing';
 import * as heatmapService from '@/services/heatmapService';
 import { getGridSizeMeters } from '@/services/locationService';
+import {
+  createBackupBundle,
+  exportBackupAsFile,
+  parseBackupBundle,
+  readFileAsText,
+  getRestoreSummary,
+  BackupDataBundle,
+  RestoreSummary,
+} from '@/utils/storage';
 
 function formatDateTime(timestamp: number): string {
   if (!timestamp) return '从未同步';
@@ -102,6 +117,22 @@ export function SettingsPage() {
   const [heatmapStats, setHeatmapStats] = useState<HeatmapStats | null>(null);
   const [cleanupHistory, setCleanupHistory] = useState<CleanupLogEntry[]>([]);
   const [cleanupMessage, setCleanupMessage] = useState<string>('');
+
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importError, setImportError] = useState<string>('');
+  const [importSuccess, setImportSuccess] = useState<string>('');
+  const [pendingRestore, setPendingRestore] = useState<{
+    bundle: BackupDataBundle;
+    summary: RestoreSummary;
+    fileName: string;
+  } | null>(null);
+  const [showConfirmRestore, setShowConfirmRestore] = useState(false);
+  const [includeAuthInBackup, setIncludeAuthInBackup] = useState(true);
+
+  const replaceAllData = useBarkStore((s) => s.replaceAllData);
+  const restoreAuthData = useAuthStore((s) => s.restoreAuthData);
+  const restoreAdminData = useAdminStore((s) => s.restoreAdminData);
 
   const refreshStats = async () => {
     const stats = await getHeatmapStats();
@@ -294,6 +325,115 @@ export function SettingsPage() {
 
   const handleSyncNow = async () => {
     await syncIncremental();
+  };
+
+  const handleExportBackup = async () => {
+    setIsExporting(true);
+    setImportError('');
+    setImportSuccess('');
+    try {
+      const barkState = useBarkStore.getState();
+      const authState = useAuthStore.getState();
+      const adminState = useAdminStore.getState();
+
+      const barkData = {
+        records: barkState.records,
+        dogs: barkState.dogs,
+        settings: barkState.settings,
+        deletedRecordIds: barkState.deletedRecordIds,
+        deletedDogIds: barkState.deletedDogIds,
+      };
+
+      const authData = includeAuthInBackup
+        ? {
+            user: authState.user,
+            isAuthenticated: authState.isAuthenticated,
+            syncStatus: authState.syncStatus,
+          }
+        : undefined;
+
+      const adminData = includeAuthInBackup
+        ? {
+            admin: adminState.admin,
+            isAuthenticated: adminState.isAuthenticated,
+          }
+        : undefined;
+
+      const bundle = createBackupBundle(barkData, authData, adminData);
+      await exportBackupAsFile(bundle);
+
+      const count = barkData.records.length;
+      const dogCount = barkData.dogs.length;
+      setImportSuccess(`备份成功！已导出 ${count} 条记录，${dogCount} 只狗狗资料`);
+      setTimeout(() => setImportSuccess(''), 5000);
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : '导出备份失败');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleImportFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImportError('');
+    setImportSuccess('');
+    setIsImporting(true);
+    setPendingRestore(null);
+
+    try {
+      const content = await readFileAsText(file);
+      const bundle = parseBackupBundle(content);
+      const summary = getRestoreSummary(bundle);
+
+      setPendingRestore({ bundle, summary, fileName: file.name });
+      setShowConfirmRestore(true);
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : '读取备份文件失败');
+    } finally {
+      setIsImporting(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleConfirmRestore = async () => {
+    if (!pendingRestore) return;
+
+    try {
+      const { bundle } = pendingRestore;
+      const { bark, auth, admin } = bundle.data;
+
+      replaceAllData(
+        bark.records,
+        bark.dogs,
+        bark.settings,
+        bark.deletedRecordIds,
+        bark.deletedDogIds
+      );
+
+      if (auth) {
+        restoreAuthData(auth);
+      }
+      if (admin) {
+        restoreAdminData(admin);
+      }
+
+      const count = bark.records.length;
+      const dogCount = bark.dogs.length;
+      setImportSuccess(`恢复成功！已导入 ${count} 条记录，${dogCount} 只狗狗资料`);
+      setTimeout(() => setImportSuccess(''), 5000);
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : '恢复数据失败');
+    } finally {
+      setShowConfirmRestore(false);
+      setPendingRestore(null);
+    }
+  };
+
+  const handleCancelRestore = () => {
+    setShowConfirmRestore(false);
+    setPendingRestore(null);
   };
 
   const renderAuthSection = () => {
@@ -1347,6 +1487,256 @@ export function SettingsPage() {
             )}
           </AnimatePresence>
         </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.18 }}
+          className="bg-white rounded-2xl shadow-soft overflow-hidden mb-6"
+        >
+          <div className="p-4 border-b border-gray-100 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center">
+              <HardDrive className="text-purple-600" size={20} />
+            </div>
+            <div className="flex-1">
+              <h2 className="font-display font-bold text-gray-800">数据备份与恢复</h2>
+              <p className="text-xs text-gray-500">导出本地数据为JSON文件，或从备份文件恢复</p>
+            </div>
+          </div>
+
+          <div className="p-4 space-y-4">
+            <AnimatePresence>
+              {importSuccess && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="flex items-start gap-2 p-3 bg-mint-50 border border-mint-200 rounded-xl"
+                >
+                  <Check className="text-mint-500 flex-shrink-0 mt-0.5" size={16} />
+                  <p className="text-sm text-mint-700">{importSuccess}</p>
+                </motion.div>
+              )}
+              {importError && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="flex items-start gap-2 p-3 bg-coral-50 border border-coral-200 rounded-xl"
+                >
+                  <AlertCircle className="text-coral-500 flex-shrink-0 mt-0.5" size={16} />
+                  <p className="text-sm text-coral-700">{importError}</p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <div className="p-3 bg-purple-50 rounded-xl border border-purple-100">
+              <div className="flex items-start gap-2">
+                <Info className="text-purple-600 flex-shrink-0 mt-0.5" size={16} />
+                <div className="text-xs text-purple-700 space-y-1">
+                  <p className="font-medium">备份内容包括：</p>
+                  <p>• 狗叫记录、狗狗档案、应用设置</p>
+                  <p>• 可选：登录凭据、同步状态</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+              <div className="flex-1">
+                <div className="text-sm font-medium text-gray-800">包含登录信息</div>
+                <div className="text-xs text-gray-500">
+                  备份中将包含云端登录凭据（如已登录）
+                </div>
+              </div>
+              <div
+                role="switch"
+                aria-checked={includeAuthInBackup}
+                tabIndex={0}
+                onClick={() => setIncludeAuthInBackup(!includeAuthInBackup)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setIncludeAuthInBackup(!includeAuthInBackup);
+                  }
+                }}
+                className={`w-12 h-7 rounded-full transition-colors cursor-pointer relative ${
+                  includeAuthInBackup ? 'bg-purple-500' : 'bg-gray-300'
+                }`}
+              >
+                <motion.div
+                  animate={{ x: includeAuthInBackup ? 22 : 2 }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                  className="w-5 h-5 rounded-full bg-white shadow-md absolute top-1"
+                />
+              </div>
+            </div>
+
+            <button
+              onClick={handleExportBackup}
+              disabled={isExporting}
+              className="w-full py-3 bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-xl text-sm font-medium hover:from-purple-600 hover:to-indigo-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50 active:scale-[0.98] shadow-lg shadow-purple-200"
+            >
+              {isExporting ? (
+                <>
+                  <Loader2 size={18} className="animate-spin" />
+                  正在导出...
+                </>
+              ) : (
+                <>
+                  <Download size={18} />
+                  一键导出备份 (JSON)
+                </>
+              )}
+            </button>
+
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-200" />
+              </div>
+              <div className="relative flex justify-center">
+                <span className="px-3 bg-white text-xs text-gray-400">或</span>
+              </div>
+            </div>
+
+            <label className="block w-full">
+              <input
+                type="file"
+                accept=".json,application/json"
+                onChange={handleImportFileSelect}
+                className="hidden"
+                disabled={isImporting}
+              />
+              <div
+                className={`w-full py-3 border-2 border-dashed rounded-xl text-sm font-medium flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                  isImporting
+                    ? 'border-gray-300 bg-gray-50 text-gray-400'
+                    : 'border-purple-300 bg-purple-50 text-purple-700 hover:bg-purple-100 hover:border-purple-400'
+                }`}
+              >
+                {isImporting ? (
+                  <>
+                    <Loader2 size={18} className="animate-spin" />
+                    正在读取...
+                  </>
+                ) : (
+                  <>
+                    <Upload size={18} />
+                    选择备份文件恢复
+                  </>
+                )}
+              </div>
+            </label>
+
+            <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+              <AlertTriangle className="text-amber-600 flex-shrink-0 mt-0.5" size={16} />
+              <div className="text-xs text-amber-700 space-y-1">
+                <p className="font-medium">⚠️ 恢复数据将覆盖当前所有本地数据</p>
+                <p>建议在恢复前先导出当前数据作为备份</p>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+
+        <AnimatePresence>
+          {showConfirmRestore && pendingRestore && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+              onClick={handleCancelRestore}
+            >
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.95, opacity: 0, y: 20 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="p-4 border-b border-gray-100">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center">
+                      <AlertTriangle className="text-amber-600" size={24} />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-display font-bold text-gray-800 text-lg">确认恢复数据？</h3>
+                      <p className="text-xs text-gray-500 mt-0.5">{pendingRestore.fileName}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-4 space-y-4">
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                    <p className="text-sm text-amber-800 font-medium">
+                      ⚠️ 此操作将覆盖当前所有本地数据，且无法撤销。
+                    </p>
+                  </div>
+
+                  <div className="bg-gray-50 rounded-xl p-3 space-y-2">
+                    <div className="flex items-center gap-2 mb-2">
+                      <FileJson className="text-purple-600" size={16} />
+                      <span className="text-sm font-medium text-gray-700">备份内容预览</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="bg-white rounded-lg p-2 text-center">
+                        <div className="text-lg font-bold text-purple-600">
+                          {pendingRestore.summary.recordsCount}
+                        </div>
+                        <div className="text-gray-500">条记录</div>
+                      </div>
+                      <div className="bg-white rounded-lg p-2 text-center">
+                        <div className="text-lg font-bold text-indigo-600">
+                          {pendingRestore.summary.dogsCount}
+                        </div>
+                        <div className="text-gray-500">只狗狗</div>
+                      </div>
+                    </div>
+                    <div className="space-y-1 pt-1">
+                      {pendingRestore.summary.hasSettings && (
+                        <div className="flex items-center gap-1.5 text-xs text-gray-600">
+                          <Check size={14} className="text-mint-600" />
+                          包含应用设置
+                        </div>
+                      )}
+                      {pendingRestore.summary.hasAuth && (
+                        <div className="flex items-center gap-1.5 text-xs text-gray-600">
+                          <Check size={14} className="text-mint-600" />
+                          包含登录信息
+                        </div>
+                      )}
+                      {pendingRestore.summary.hasAdmin && (
+                        <div className="flex items-center gap-1.5 text-xs text-gray-600">
+                          <Check size={14} className="text-mint-600" />
+                          包含管理员信息
+                        </div>
+                      )}
+                      <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-2">
+                        <Clock size={12} />
+                        导出时间：{new Date(pendingRestore.summary.exportedAt).toLocaleString('zh-CN')}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-4 border-t border-gray-100 flex gap-3">
+                  <button
+                    onClick={handleCancelRestore}
+                    className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors"
+                  >
+                    取消
+                  </button>
+                  <button
+                    onClick={handleConfirmRestore}
+                    className="flex-1 py-2.5 bg-gradient-to-r from-amber-500 to-coral-500 text-white rounded-xl text-sm font-medium hover:from-amber-600 hover:to-coral-600 transition-all shadow-md shadow-amber-200 active:scale-[0.98]"
+                  >
+                    确认恢复
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <motion.div
           initial={{ opacity: 0, y: 20 }}

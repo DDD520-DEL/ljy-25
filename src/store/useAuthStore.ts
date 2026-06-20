@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { User, SyncStatus, SyncStats, SyncPhaseResult } from '@/types';
+import { BackupAuthData } from '@/utils/storage';
 import * as syncService from '@/services/syncService';
 
 interface AuthState {
@@ -41,6 +42,7 @@ interface AuthState {
     error?: string
   ) => void;
   clearError: () => void;
+  restoreAuthData: (data: BackupAuthData) => void;
 }
 
 const initialSyncStats: SyncStats = {
@@ -322,6 +324,24 @@ export const useAuthStore = create<AuthState>()(
 
       clearError: () => {
         set({ error: null });
+      },
+
+      restoreAuthData: (data: BackupAuthData) => {
+        set({
+          user: data.user,
+          isAuthenticated: data.isAuthenticated,
+          syncStatus: {
+            ...data.syncStatus,
+            isSyncing: false,
+            currentSyncType: null,
+            queueSize: 0,
+            justLoggedIn: false,
+            loginSyncPhase: 'none',
+          },
+          isLoading: false,
+          error: null,
+          syncQueue: Promise.resolve(),
+        });
       },
     }),
     {

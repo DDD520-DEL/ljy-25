@@ -47,7 +47,9 @@ interface BarkState {
   replaceAllData: (
     records: BarkRecord[],
     dogs: DogProfile[],
-    settings?: AppSettings
+    settings?: AppSettings,
+    deletedRecordIds?: string[],
+    deletedDogIds?: string[]
   ) => void;
   clearDeletedTracking: () => void;
 }
@@ -444,14 +446,16 @@ export const useBarkStore = create<BarkState>()(
       replaceAllData: (
         records: BarkRecord[],
         dogs: DogProfile[],
-        settings?: AppSettings
+        settings?: AppSettings,
+        deletedRecordIds?: string[],
+        deletedDogIds?: string[]
       ) => {
         set((state) => ({
           records: [...records].sort((a, b) => b.timestamp - a.timestamp),
           dogs: [...dogs],
           settings: settings ?? state.settings,
-          deletedRecordIds: [],
-          deletedDogIds: [],
+          deletedRecordIds: deletedRecordIds ?? [],
+          deletedDogIds: deletedDogIds ?? [],
         }));
       },
 

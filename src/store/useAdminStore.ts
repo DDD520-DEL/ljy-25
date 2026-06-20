@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { AdminUser } from '@/types';
+import { BackupAdminData } from '@/utils/storage';
 import * as syncService from '@/services/syncService';
 
 interface AdminState {
@@ -12,6 +13,7 @@ interface AdminState {
   logout: () => Promise<void>;
   validateSession: () => Promise<boolean>;
   clearError: () => void;
+  restoreAdminData: (data: BackupAdminData) => void;
 }
 
 export const useAdminStore = create<AdminState>()(
@@ -75,6 +77,15 @@ export const useAdminStore = create<AdminState>()(
 
       clearError: () => {
         set({ error: null });
+      },
+
+      restoreAdminData: (data: BackupAdminData) => {
+        set({
+          admin: data.admin,
+          isAuthenticated: data.isAuthenticated,
+          isLoading: false,
+          error: null,
+        });
       },
     }),
     {

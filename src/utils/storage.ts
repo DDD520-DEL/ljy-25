@@ -1,4 +1,4 @@
-import { BarkRecord, DogProfile } from '@/types';
+import { BarkRecord, DogProfile, AppSettings, User, SyncStatus, AdminUser } from '@/types';
 
 export function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -298,4 +298,147 @@ export async function downloadMultipleFiles(
       await new Promise(resolve => setTimeout(resolve, delayMs));
     }
   }
+}
+
+export interface BackupBarkData {
+  records: BarkRecord[];
+  dogs: DogProfile[];
+  settings: AppSettings;
+  deletedRecordIds: string[];
+  deletedDogIds: string[];
+}
+
+export interface BackupAuthData {
+  user: User | null;
+  isAuthenticated: boolean;
+  syncStatus: SyncStatus;
+}
+
+export interface BackupAdminData {
+  admin: AdminUser | null;
+  isAuthenticated: boolean;
+}
+
+export interface BackupDataBundle {
+  version: string;
+  exportedAt: number;
+  app: string;
+  data: {
+    bark: BackupBarkData;
+    auth?: BackupAuthData;
+    admin?: BackupAdminData;
+  };
+}
+
+export const BACKUP_VERSION = '1.0';
+export const BACKUP_APP_NAME = 'bark-recorder';
+
+export function createBackupBundle(
+  barkData: BackupBarkData,
+  authData?: BackupAuthData,
+  adminData?: BackupAdminData
+): BackupDataBundle {
+  return {
+    version: BACKUP_VERSION,
+    exportedAt: Date.now(),
+    app: BACKUP_APP_NAME,
+    data: {
+      bark: barkData,
+      ...(authData && { auth: authData }),
+      ...(adminData && { admin: adminData }),
+    },
+  };
+}
+
+export function serializeBackupBundle(bundle: BackupDataBundle): string {
+  return JSON.stringify(bundle, null, 2);
+}
+
+export function parseBackupBundle(content: string): BackupDataBundle {
+  try {
+    const parsed = JSON.parse(content);
+    if (!validateBackupBundle(parsed)) {
+      throw new Error('备份文件格式无效');
+    }
+    return parsed;
+  } catch (err) {
+    if (err instanceof SyntaxError) {
+      throw new Error('备份文件不是有效的 JSON 格式');
+    }
+    throw err;
+  }
+}
+
+export function validateBackupBundle(data: unknown): data is BackupDataBundle {
+  if (!data || typeof data !== 'object') return false;
+  const d = data as Record<string, unknown>;
+
+  if (d.app !== BACKUP_APP_NAME) return false;
+  if (typeof d.version !== 'string') return false;
+  if (typeof d.exportedAt !== 'number') return false;
+  if (!d.data || typeof d.data !== 'object') return false;
+
+  const dataObj = d.data as Record<string, unknown>;
+  if (!dataObj.bark || typeof dataObj.bark !== 'object') return false;
+
+  const bark = dataObj.bark as Record<string, unknown>;
+  if (!Array.isArray(bark.records)) return false;
+  if (!Array.isArray(bark.dogs)) return false;
+  if (!bark.settings || typeof bark.settings !== 'object') return false;
+  if (!Array.isArray(bark.deletedRecordIds)) return false;
+  if (!Array.isArray(bark.deletedDogIds)) return false;
+
+  return true;
+}
+
+export function getBackupFileName(): string {
+  const now = new Date();
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const dateStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
+  const timeStr = `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  return `狗叫记录备份_${dateStr}_${timeStr}.json`;
+}
+
+export async function exportBackupAsFile(bundle: BackupDataBundle): Promise<void> {
+  const content = serializeBackupBundle(bundle);
+  const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
+  const fileName = getBackupFileName();
+  await downloadBlob(blob, fileName);
+}
+
+export interface RestoreSummary {
+  recordsCount: number;
+  dogsCount: number;
+  hasSettings: boolean;
+  hasAuth: boolean;
+  hasAdmin: boolean;
+  exportedAt: number;
+}
+
+export function getRestoreSummary(bundle: BackupDataBundle): RestoreSummary {
+  return {
+    recordsCount: bundle.data.bark.records.length,
+    dogsCount: bundle.data.bark.dogs.length,
+    hasSettings: !!bundle.data.bark.settings,
+    hasAuth: !!bundle.data.auth,
+    hasAdmin: !!bundle.data.admin,
+    exportedAt: bundle.exportedAt,
+  };
+}
+
+export function readFileAsText(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result);
+      } else {
+        reject(new Error('无法读取文件内容'));
+      }
+    };
+    reader.onerror = () => {
+      reject(new Error('读取文件失败'));
+    };
+    reader.readAsText(file, 'utf-8');
+  });
 }
